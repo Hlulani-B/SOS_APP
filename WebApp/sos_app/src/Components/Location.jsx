@@ -85,6 +85,22 @@ function samePals(a, b) {
   });
 }
 
+// Same reference-stability trick for the invite lists polled every
+// PALS_POLL_MS: rows keyed by id/status/participants, so a tick that changed
+// nothing keeps the old array and the bell badge + open panel stay still.
+function sameInviteRows(a, b) {
+  if (a.length !== b.length) return false;
+  return a.every((row, i) => {
+    const other = b[i];
+    return (
+      row.id === other.id &&
+      row.status === other.status &&
+      row.inviter === other.inviter &&
+      row.invitee === other.invitee
+    );
+  });
+}
+
 // Re-frames the map whenever the plotted pals change; MapContainer's
 // initial center is rendered before the async data has arrived.
 function FitToPals({ markers }) {
@@ -213,10 +229,53 @@ export default function Location({ email }) {
     }
   }, [email]);
 
-  // Loaded on mount so the bell badge is honest before the panel is opened.
+  // Invites appear and change status server-side at any moment (someone
+  // sends one, a pending request gets answered from another device), so the
+  // bell re-reads them on the same 10s cadence as the pals poll - useEffect +
+  // setInterval, mirroring loadPals' cancelled/booted/inFlight guards: one
+  // initial load owns the loading/error states, late ticks fold into a slow
+  // fetch, and unchanged lists keep their array reference.
   useEffect(() => {
-    refreshInvites();
-  }, [refreshInvites]);
+    let cancelled = false;
+    let booted = false;
+    let inFlight = false;
+
+    async function pollInvites() {
+      if (inFlight) return;
+      inFlight = true;
+      try {
+        // Settled, not all: each half of the panel stands on its own, so a
+        // single failed read still keeps the other half honest.
+        const [received, sent] = await Promise.allSettled([
+          get_invites(email),
+          get_sent_invites(email),
+        ]);
+        if (cancelled) return;
+        if (received.status === "fulfilled") {
+          setInvites((prev) =>
+            sameInviteRows(prev, received.value) ? prev : received.value
+          );
+        } else if (!booted) {
+          setInvitesError(received.reason?.message || "Could not load invitations");
+        }
+        if (sent.status === "fulfilled") {
+          setSentInvites((prev) =>
+            sameInviteRows(prev, sent.value) ? prev : sent.value
+          );
+        }
+      } finally {
+        inFlight = false;
+        if (!cancelled) booted = true;
+      }
+    }
+
+    pollInvites();
+    const timer = setInterval(pollInvites, PALS_POLL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [email]);
 
   async function answerInvite(invite, status) {
     setInviteBusy(invite.id);
