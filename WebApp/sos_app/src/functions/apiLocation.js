@@ -1,31 +1,15 @@
 import { callApi } from "./apiClient.js";
+import { getPosition } from "./geoPosition.js";
 
 /**
  * Fetch wrappers for api/functions/location.js - one per backend method,
  * same names, same signatures. All hit POST /api/location.
  *
  * The backend runs in Node and cannot read a device position, so when
- * ShareLocation is called without coordinates the browser grabs them here
- * (same options the old local helper used) and sends them along.
+ * ShareLocation is called without coordinates the app grabs them here via
+ * the shared getPosition() helper (native plugin on the packaged app, web
+ * API in the browser) and sends them along.
  */
-
-function currentPosition() {
-  return new Promise((resolve, reject) => {
-    if (!navigator.geolocation) {
-      reject(new Error("ShareLocation: no geolocation on this device, pass coordinates instead"));
-      return;
-    }
-    navigator.geolocation.getCurrentPosition(
-      (position) =>
-        resolve({
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude,
-        }),
-      (err) => reject(new Error(`ShareLocation: geolocation failed (${err.message})`)),
-      { enableHighAccuracy: true, timeout: 10000 }
-    );
-  });
-}
 
 /** Register a contact row (email only, no location yet). */
 export async function addEmail(email) {
@@ -38,7 +22,7 @@ export async function addEmail(email) {
  *        omit to share this device's live position
  */
 export async function ShareLocation(email, coordinates) {
-  const position = coordinates ?? (await currentPosition());
+  const position = coordinates ?? (await getPosition());
   return callApi("location", "ShareLocation", [email, position]);
 }
 

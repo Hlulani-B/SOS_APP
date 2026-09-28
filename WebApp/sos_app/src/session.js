@@ -1,4 +1,6 @@
 import { signOut } from 'firebase/auth';
+import { Capacitor } from '@capacitor/core';
+import { FirebaseAuthentication } from '@capacitor-firebase/authentication';
 import { auth } from './firebase.js';
 import { VIEWS, navigate, VIEW_KEY } from './navigation.js';
 import { stop as stopLiveLocation } from './functions/liveLocation.js';
@@ -14,10 +16,11 @@ export const EMAIL_KEY = 'sos_email';
 /**
  * Ends the session properly.
  *
- * Firebase keeps the signed-in user in IndexedDB independently of anything
- * this app stores, so clearing localStorage is not enough: on the next mount
- * login.jsx's onAuthStateChanged would see a live session and sign her
- * straight back in. signOut() has to come first.
+ * Firebase keeps the signed-in user in IndexedDB (web) or in the platform
+ * Firebase SDK (native app) independently of anything this app stores, so
+ * clearing localStorage is not enough: on the next mount login.jsx would see
+ * a live session and sign her straight back in. The matching signOut has to
+ * come first - web auth on a browser, the plugin inside the packaged app.
  */
 export async function logOut() {
   // End any live share first: this clears the persisted refresh-resume flag
@@ -25,7 +28,11 @@ export async function logOut() {
   // leave a background timer broadcasting her location or a flag that would
   // silently resume under the next account.
   stopLiveLocation();
-  await signOut(auth);
+  if (Capacitor.isNativePlatform()) {
+    await FirebaseAuthentication.signOut();
+  } else {
+    await signOut(auth);
+  }
   localStorage.removeItem(EMAIL_KEY);
   localStorage.removeItem(VIEW_KEY);
   navigate(VIEWS.LOGIN);

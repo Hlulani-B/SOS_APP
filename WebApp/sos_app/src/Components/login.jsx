@@ -1,12 +1,20 @@
 import { useEffect, useRef, useState } from "react";
 import { signInWithPopup, signInWithRedirect, onAuthStateChanged } from "firebase/auth";
+import { Capacitor } from "@capacitor/core";
+import { FirebaseAuthentication } from "@capacitor-firebase/authentication";
 import { auth, googleProvider } from "../firebase.js";
 import { Checkuser } from "../functions/apiUsers.js";
 import loginArt from "../assets/safe_login_art.png";
 
 /**
- * "Continue with Google" via Firebase's popup flow, laid out as a
- * two-column sign-in screen: illustration left, form right.
+ * "Continue with Google", laid out as a two-column sign-in screen:
+ * illustration left, form right. The button runs two different flows behind
+ * one label: the browser keeps Firebase's popup (falling back to a redirect
+ * when blocked), while the packaged Capacitor app signs in through the
+ * native Google flow via @capacitor-firebase/authentication - the popup
+ * cannot work there because the WebView's custom-scheme origin can never be
+ * a Firebase Authorized domain. Both paths hand the same { email,
+ * displayName } shape to routeUser, so nothing downstream notices.
  *
  * Firebase owns credentials and session persistence only. The Neon half is
  * unchanged: Checkuser(email) decides where the app goes next -
@@ -26,6 +34,10 @@ import loginArt from "../assets/safe_login_art.png";
  * presents itself as an ordinary "Weather App" sign-in - no shield, no
  * "SOS", and no hint of the other disguises.
  */
+
+// One platform check for the whole module: native = packaged Capacitor app,
+// web = browser (dev server and the deployed site alike).
+const IS_NATIVE = Capacitor.isNativePlatform();
 
 // "Baloy Njoku" -> { name: "Baloy", surname: "Njoku" }; a single word becomes
 // the name, and a missing displayName yields empty strings for the row.
@@ -60,6 +72,16 @@ export default function Login({ onSuccess }) {
   }, []);
 
   useEffect(() => {
+    if (IS_NATIVE) {
+      // The native plugin keeps its session in the platform Firebase SDK -
+      // the JS auth object never sees it, so onAuthStateChanged stays silent
+      // here and a returning user is picked up via getCurrentUser instead
+      // (null user just means the login screen stays put).
+      FirebaseAuthentication.getCurrentUser()
+        .then(({ user }) => (user ? routeUser(user) : null))
+        .catch((err) => setError(err.message));
+      return;
+    }
     // Also covers a returning user whose Firebase session was restored from
     // storage, so the app skips the popup entirely.
     const unsubscribe = onAuthStateChanged(auth, (user) => {
@@ -77,6 +99,21 @@ export default function Login({ onSuccess }) {
     setError("");
     setNotice("");
     setBusy(true);
+
+    if (IS_NATIVE) {
+      try {
+        // user arrives null when the Google sheet is dismissed without
+        // choosing an account - not an error, just put the button back.
+        const { user } = await FirebaseAuthentication.signInWithGoogle();
+        if (user?.email) await routeUser(user);
+      } catch (err) {
+        setError(err.message || "Google sign-in failed.");
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
+
     try {
       await signInWithPopup(auth, googleProvider);
       // routeUser runs via the onAuthStateChanged listener above.

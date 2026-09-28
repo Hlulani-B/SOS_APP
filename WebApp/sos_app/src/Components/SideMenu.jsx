@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
-import { FiCloud, FiLogOut, FiSettings } from "react-icons/fi";
+import { FiCloud, FiDownload, FiLogOut, FiSettings } from "react-icons/fi";
+import { Capacitor } from "@capacitor/core";
 import { VIEWS, navigate, readView } from "../navigation.js";
 import { logOut } from "../session.js";
 
@@ -120,6 +121,20 @@ export default function SideMenu({ title = "Menu", theme = "light" }) {
     logOut().catch((err) => console.error("Log out failed:", err));
   };
 
+  // The APK ships inside the site (public/weather-app.apk, committed at the
+  // repo root too), so this is a same-origin file download - no GitHub
+  // releases, no external host. Hidden inside the native app itself, where
+  // "download the app" is a strange thing to offer.
+  const handleDownloadApk = () => {
+    setIsOpen(false);
+    const link = document.createElement("a");
+    link.href = "/weather-app.apk";
+    link.download = "weather-app.apk";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  };
+
   return (
     <>
       {/* Hamburger - top left */}
@@ -167,6 +182,14 @@ export default function SideMenu({ title = "Menu", theme = "light" }) {
 
         {/* Pinned to the bottom of the panel, above nothing else. */}
         <footer className="side-menu-footer">
+          {!Capacitor.isNativePlatform() && (
+            <MenuRow
+              label="Download the Weather app"
+              Icon={FiDownload}
+              chevron={false}
+              onClick={handleDownloadApk}
+            />
+          )}
           <MenuRow
             label="Log out"
             Icon={FiLogOut}

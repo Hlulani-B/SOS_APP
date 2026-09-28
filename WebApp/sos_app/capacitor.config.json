@@ -1,0 +1,5 @@
+{
+  "appId": "com.mysos.weather",
+  "appName": "Weather",
+  "webDir": "dist"
+}
