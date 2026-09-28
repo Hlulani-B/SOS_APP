@@ -154,16 +154,18 @@ export default function Location({ email }) {
     setInvitesLoading(true);
     setInvitesError(null);
     try {
-      // Received and sent load together so the panel shows both halves of
-      // the invite table from one refresh.
-      const [received, sent] = await Promise.all([
+      // Settled, not all: the two halves of the panel stand on their own, so
+      // an API build that predates get_sent_invites (or a single failed read)
+      // still shows the invites that did load instead of sinking both.
+      const [received, sent] = await Promise.allSettled([
         get_invites(email),
         get_sent_invites(email),
       ]);
-      setInvites(received);
-      setSentInvites(sent);
-    } catch (err) {
-      setInvitesError(err.message || "Could not load invitations");
+      if (received.status === "fulfilled") setInvites(received.value);
+      if (sent.status === "fulfilled") setSentInvites(sent.value);
+      if (received.status === "rejected") {
+        setInvitesError(received.reason?.message || "Could not load invitations");
+      }
     } finally {
       setInvitesLoading(false);
     }
