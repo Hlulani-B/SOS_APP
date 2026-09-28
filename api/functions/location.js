@@ -29,18 +29,25 @@ function getCurrentPosition() {
 
 export class Location {
   /**
-   * Stores the current coordinates on the contact's existing row. `email` is
-   * the primary key, so the lookup is the email itself.
+   * Stores the current coordinates on the contact's row, creating the row on
+   * first share. `email` is the primary key, so the lookup is the email
+   * itself. The UPDATE-only version threw "register it with addEmail first"
+   * for every account that had never been registered - nothing in the app
+   * ever called addEmail - so the share toggle could never turn on. The
+   * ON CONFLICT keeps StopLiveLocation's contract: the row stays and only
+   * the coordinates clear, so sharing can always resume.
    */
   async ShareLocation(email, coordinates) {
     const position = coordinates ?? await getCurrentPosition();
 
-    const { rowCount } = await pool.query(
-      'UPDATE locations SET latitude = $1, longitude = $2 WHERE email = $3',
+    await pool.query(
+      `INSERT INTO locations (email, latitude, longitude)
+       VALUES ($3, $1, $2)
+       ON CONFLICT (email) DO UPDATE
+         SET latitude = EXCLUDED.latitude,
+             longitude = EXCLUDED.longitude`,
       [position.latitude, position.longitude, email]
     );
-
-    if (rowCount === 0) throw new Error(`ShareLocation found no row for ${email} — register it with addEmail first`);
   }
 
   /**
