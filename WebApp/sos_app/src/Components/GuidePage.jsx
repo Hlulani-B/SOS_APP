@@ -41,10 +41,16 @@ const COLORS = [
 
 const RED = "#ff3b30";
 
-export default function GuidePage({ onComplete }) {
+export default function GuidePage({ onComplete, variant = "onboarding" }) {
+  // Reached two ways: as the last onboarding step (variant "onboarding") and
+  // as a standalone screen from the menu (variant "settings"). Only the
+  // onboarding copy carries the "Step 3 of 3" breadcrumb; the standalone
+  // screen reads as a reference page, so it drops the step and its button
+  // sends the user back rather than declaring readiness.
+  const isSettings = variant === "settings";
   return (
     <div className="guide-page">
-      <span className="flow-step">Step 3 of 3</span>
+      {!isSettings && <span className="flow-step">Step 3 of 3</span>}
       <h1 className="guide-title">Before you start</h1>
       <p className="guide-subtitle">
         A short tour of how Weather behaves on this account.
@@ -146,7 +152,7 @@ export default function GuidePage({ onComplete }) {
         className="login-google flow-submit"
         onClick={onComplete}
       >
-        I&apos;m ready
+        {isSettings ? "Back to Weather" : "I’m ready"}
       </button>
     </div>
   );

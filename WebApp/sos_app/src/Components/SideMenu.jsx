@@ -71,8 +71,9 @@ const ChevronIcon = () => (
 const NAV_ROWS = [
   { view: VIEWS.LOCATION, label: "Location", Icon: LocationIcon },
   { view: VIEWS.WEATHER, label: "Weather", Icon: FiCloud },
-  // The onboarding guide doubles as the settings screen for now.
-  { view: VIEWS.GUIDE, label: "Settings", Icon: FiSettings }
+  // The explainer, now its own screen reached from here (no longer the
+  // onboarding guide doubling as settings).
+  { view: VIEWS.GUIDE_SETTINGS, label: "Settings", Icon: FiSettings }
 ];
 
 function MenuRow({ label, Icon, onClick, chevron = true, className = "" }) {

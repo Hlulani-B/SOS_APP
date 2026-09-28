@@ -13,6 +13,7 @@ export const VIEWS = {
   SETUP: 'setup',
   AVATAR: 'avatar',
   GUIDE: 'guide',
+  GUIDE_SETTINGS: 'guide-settings',
   WEATHER: 'weather',
   LOCATION: 'location',
 };

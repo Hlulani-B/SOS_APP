@@ -76,6 +76,12 @@ function App() {
     return <GuidePage onComplete={() => go(VIEWS.WEATHER)} />
   }
 
+  if (view === VIEWS.GUIDE_SETTINGS) {
+    // Same explainer reached from the menu, standalone variant: no step
+    // breadcrumb, and its button heads back to Weather (the app home).
+    return <GuidePage variant="settings" onComplete={() => go(VIEWS.WEATHER)} />
+  }
+
   if (view === VIEWS.LOCATION) {
     return <LocationPage email={email} />
   }
