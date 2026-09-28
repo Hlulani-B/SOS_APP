@@ -8,6 +8,7 @@ import WeatherPage from './Components/WeatherPage.jsx'
 import LocationPage from './Components/Location.jsx'
 import { VIEWS, readView, navigate, subscribeToNavigation } from './navigation.js'
 import { EMAIL_KEY } from './session.js'
+import { restore as restoreLiveLocation } from './functions/liveLocation.js'
 import './App.css'
 
 /**
@@ -42,6 +43,12 @@ function App() {
   // navigate() only writes localStorage and fires an event - this is what
   // turns that into a re-render, so any component can move the app.
   useEffect(() => subscribeToNavigation(() => setView(readView())), [])
+
+  // A refresh wipes the in-memory share timer; if she was mid-share, pick it
+  // back up now that we know who is signed in (see functions/liveLocation.js).
+  useEffect(() => {
+    if (email) restoreLiveLocation(email)
+  }, [email])
 
   function go(next) {
     navigate(next)

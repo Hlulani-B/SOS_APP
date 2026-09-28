@@ -12,16 +12,19 @@ import { ShareLocation, StopLiveLocation } from "./apiLocation.js";
  * There is no router here (see navigation.js): switching views never reloads
  * the page, so a plain module-level timer survives every navigation. This
  * singleton owns the loop; components only read its state and ask it to
- * start/stop, so the Weather page (or anywhere else) keeps sharing exactly
- * as long as the tab stays open.
+ * start/stop, so the Weather page (or anywhere else) keeps sharing.
  *
- * Deliberate scope: a full page reload clears it. Persisting "sharing" across
- * a reload would quietly resume broadcasting coordinates the user can no
- * longer see the red button for, so we let the visible control be the source
- * of truth instead.
+ * Surviving a refresh: a reload wipes the in-memory timer, so the sharing
+ * email is also mirrored to localStorage (LIVE_KEY). App.jsx calls restore()
+ * once on boot, which reads that flag and resumes the loop - so closing or
+ * refreshing the tab no longer drops you off the map. The flag is cleared on
+ * stop() and on logOut(), and restore() refuses to resume for an email that
+ * doesn't match the signed-in session, so a leftover flag can never quietly
+ * broadcast the wrong person's location.
  */
 
 const INTERVAL_MS = 10000;
+const LIVE_KEY = "sa_live_location";
 
 let timer = null;
 let activeEmail = null;
@@ -37,17 +40,14 @@ export function isActive() {
   return timer !== null;
 }
 
-/**
- * Begin sharing this email's position every INTERVAL_MS.
- * Fires one ShareLocation immediately so the map reflects you right away
- * rather than after the first idle 10s tick. No-op if already sharing.
- */
-export function start(email) {
-  if (timer !== null) return;
-  if (!email) {
-    console.error("liveLocation.start: no email to share for");
-    return;
-  }
+/** The email currently being shared for, or null. */
+export function activeEmailFor() {
+  return activeEmail;
+}
+
+// Shared by start() and restore(): fire one position immediately so the map
+// updates at once rather than after the first idle 10s tick, then loop.
+function beginLoop(email) {
   activeEmail = email;
   ShareLocation(email).catch((err) => console.error(err));
   timer = setInterval(() => {
@@ -56,8 +56,26 @@ export function start(email) {
   emit();
 }
 
-/** Stop sharing and clear the stored coordinates. No-op if not sharing. */
+/**
+ * Begin sharing this email's position every INTERVAL_MS and remember it so a
+ * refresh can resume. No-op if already sharing.
+ */
+export function start(email) {
+  if (timer !== null) return;
+  if (!email) {
+    console.error("liveLocation.start: no email to share for");
+    return;
+  }
+  localStorage.setItem(LIVE_KEY, email);
+  beginLoop(email);
+}
+
+/**
+ * Stop sharing, clear the stored coordinates, and drop the persistence flag.
+ * Clears the flag even if no timer is running, so a stale entry can't linger.
+ */
 export function stop() {
+  localStorage.removeItem(LIVE_KEY);
   if (timer === null) return;
   clearInterval(timer);
   timer = null;
@@ -65,6 +83,23 @@ export function stop() {
   activeEmail = null;
   StopLiveLocation(email).catch((err) => console.error(err));
   emit();
+}
+
+/**
+ * Resume a refresh-surviving share session. Call once at app boot with the
+ * signed-in email. Does nothing when already sharing, when no flag is set, or
+ * when the stored email belongs to a different account (that flag is cleared
+ * instead of honoured).
+ */
+export function restore(currentEmail) {
+  if (timer !== null) return;
+  const stored = localStorage.getItem(LIVE_KEY);
+  if (!stored) return;
+  if (currentEmail && stored !== currentEmail) {
+    localStorage.removeItem(LIVE_KEY);
+    return;
+  }
+  beginLoop(stored);
 }
 
 /** Flip the current state; start uses the passed email when turning on. */

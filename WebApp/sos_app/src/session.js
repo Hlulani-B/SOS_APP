@@ -1,6 +1,7 @@
 import { signOut } from 'firebase/auth';
 import { auth } from './firebase.js';
 import { VIEWS, navigate, VIEW_KEY } from './navigation.js';
+import { stop as stopLiveLocation } from './functions/liveLocation.js';
 
 /**
  * Session helpers - the small amount of state that outlives a single screen.
@@ -19,6 +20,11 @@ export const EMAIL_KEY = 'sos_email';
  * straight back in. signOut() has to come first.
  */
 export async function logOut() {
+  // End any live share first: this clears the persisted refresh-resume flag
+  // and wipes the stored coordinates server-side, so signing out can never
+  // leave a background timer broadcasting her location or a flag that would
+  // silently resume under the next account.
+  stopLiveLocation();
   await signOut(auth);
   localStorage.removeItem(EMAIL_KEY);
   localStorage.removeItem(VIEW_KEY);
