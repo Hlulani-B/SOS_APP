@@ -11,15 +11,16 @@ import { Capacitor } from '@capacitor/core';
  * and the plugin is imported lazily so its native code never enters the web
  * bundle.
  *
- * Resolves { latitude, longitude }; rejects on no-support / denial / timeout,
- * letting each caller decide how to degrade.
+ * Resolves { latitude, longitude }; rejects only on no-support or denial. No
+ * timeout is set on purpose: a cold GPS fix can legitimately take longer than
+ * any constant we would pick, and the live-share loop skips ticks while one
+ * is in flight, so waiting is cheaper than throwing away the attempt.
  */
 export async function getPosition() {
   if (Capacitor.isNativePlatform()) {
     const { Geolocation } = await import('@capacitor/geolocation');
     const pos = await Geolocation.getCurrentPosition({
       enableHighAccuracy: true,
-      timeout: 10000,
     });
     return {
       latitude: pos.coords.latitude,
@@ -39,7 +40,9 @@ export async function getPosition() {
           longitude: position.coords.longitude,
         }),
       (err) => reject(err),
-      { enableHighAccuracy: true, timeout: 10000 }
+      // No timeout option: the spec default is "wait forever", which is what
+      // a slow-but-coming GPS fix needs.
+      { enableHighAccuracy: true }
     );
   });
 }

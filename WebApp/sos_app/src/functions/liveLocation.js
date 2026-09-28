@@ -47,12 +47,23 @@ export function activeEmailFor() {
 
 // Shared by start() and restore(): fire one position immediately so the map
 // updates at once rather than after the first idle 10s tick, then loop.
+// A share now has no geolocation timeout, so a fix can take longer than the
+// tick interval; inFlight makes late ticks fold into the pending one instead
+// of stacking request after request (and error after error) on a cold GPS.
 function beginLoop(email) {
   activeEmail = email;
-  ShareLocation(email).catch((err) => console.error(err));
-  timer = setInterval(() => {
-    ShareLocation(activeEmail).catch((err) => console.error(err));
-  }, INTERVAL_MS);
+  let inFlight = false;
+  const tick = () => {
+    if (inFlight) return;
+    inFlight = true;
+    ShareLocation(email)
+      .catch((err) => console.error(err))
+      .finally(() => {
+        inFlight = false;
+      });
+  };
+  tick();
+  timer = setInterval(tick, INTERVAL_MS);
   emit();
 }
 

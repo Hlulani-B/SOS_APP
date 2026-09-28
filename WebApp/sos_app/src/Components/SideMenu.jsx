@@ -121,14 +121,17 @@ export default function SideMenu({ title = "Menu", theme = "light" }) {
     logOut().catch((err) => console.error("Log out failed:", err));
   };
 
-  // The APK ships inside the site (public/weather-app.apk, committed at the
-  // repo root too), so this is a same-origin file download - no GitHub
-  // releases, no external host. Hidden inside the native app itself, where
-  // "download the app" is a strange thing to offer.
+  // The APK lives at the repo root and is served by GET /weather-app.apk on
+  // the API (api/index.js) - deliberately NOT from public/, because a file
+  // in the web bundle would ride inside every future APK build and add ~9 MB
+  // each time. On dev VITE_API_BASE is empty, so this falls back to a
+  // relative URL that only resolves once the API is also proxied; the
+  // deployed site always has the absolute base set.
   const handleDownloadApk = () => {
     setIsOpen(false);
+    const base = import.meta.env.VITE_API_BASE ?? "";
     const link = document.createElement("a");
-    link.href = "/weather-app.apk";
+    link.href = `${base}/weather-app.apk`;
     link.download = "weather-app.apk";
     document.body.appendChild(link);
     link.click();

@@ -1,8 +1,19 @@
 import express from 'express';
 import cors from 'cors';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import locationRouter from './routes/location.js';
 import palsRouter from './routes/pals.js';
 import usersRouter from './routes/users.js';
+
+// Repo-root copy of the debug APK (kept out of the web bundle on purpose -
+// in public/ it would ride inside every future APK and grow it ~9 MB each
+// rebuild). Render clones the whole repo, so ../weather-app.apk resolves
+// here in production just like it does locally.
+const APK_PATH = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  '../weather-app.apk'
+);
 
 const app = express();
 
@@ -42,6 +53,7 @@ app.get('/', (_req, res) => {
         'setSurname',
         'setAvatar',
       ],
+      'GET /weather-app.apk': 'debug APK download (attachment)',
     },
   });
 });
@@ -49,6 +61,15 @@ app.get('/', (_req, res) => {
 app.use('/api/location', locationRouter);
 app.use('/api/pals', palsRouter);
 app.use('/api/users', usersRouter);
+
+// Serves the APK for the site's "Download the Weather app" button. The
+// attachment disposition makes browsers save it instead of trying to render
+// it; sendFile's own error handling covers a missing file.
+app.get('/weather-app.apk', (_req, res) => {
+  res.setHeader('Content-Type', 'application/vnd.android.package-archive');
+  res.setHeader('Content-Disposition', 'attachment; filename="weather-app.apk"');
+  res.sendFile(APK_PATH);
+});
 
 app.use((req, res) => {
   res.status(404).json({ ok: false, error: `No route for ${req.method} ${req.path}` });
