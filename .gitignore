@@ -1,0 +1,25 @@
+# OS / editor noise
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Node
+node_modules/
+dist/
+*.log
+
+# Env files - real values stay local (api/.env holds the Neon password).
+# Only the .env.example templates are committed.
+.env
+.env.*
+!.env.example
+
+# Browser-verification screenshots left at the workspace root
+/verify_*.png
+
+# Not part of this repo:
+# - SOS/: the older standalone app, deliberately left out
+# - voicewake/: separate Expo project with its own git history
+/SOS/
+/voicewake/

@@ -1,0 +1,54 @@
+# Render blueprint for the SOS app.
+#
+# Two services:
+#   sos-api - the Express backend (api/), one dispatcher endpoint per
+#             functions module (POST /api/users|pals|location).
+#   sos-web - the Vite frontend (WebApp/sos_app), built to a static bundle.
+#
+# The legacy SOS/ folder is deliberately NOT deployed (it is the older
+# standalone app and is excluded from this repo entirely).
+#
+# After Render creates the services, fill in the marked sync:false values
+# in the dashboard (or re-run with them set), then point VITE_API_BASE at
+# the sos-api URL and CORS_ORIGINS at the sos-web URL.
+
+services:
+  - type: web
+    name: sos-api
+    runtime: node
+    rootDir: api
+    plan: free
+    buildCommand: npm ci
+    startCommand: npm start
+    envVars:
+      - key: DATABASE_URL # pooled Neon connection string - set in dashboard
+        sync: false
+      - key: CORS_ORIGINS # comma-separated frontend origins allowed here
+        value: https://sos-web.onrender.com
+      - key: NODE_VERSION
+        value: 22
+
+  - type: static
+    name: sos-web
+    rootDir: WebApp/sos_app
+    plan: free
+    buildCommand: npm ci && npm run build
+    publishPath: dist
+    envVars:
+      # Base URL the bundle calls; matches the sos-api service above.
+      # No trailing slash. Change if the API is renamed/moved.
+      - key: VITE_API_BASE
+        value: https://sos-api.onrender.com
+      # Firebase project identity (public values, safe to commit).
+      - key: VITE_FIREBASE_API_KEY
+        sync: false
+      - key: VITE_FIREBASE_AUTH_DOMAIN
+        sync: false
+      - key: VITE_FIREBASE_PROJECT_ID
+        sync: false
+      - key: VITE_FIREBASE_STORAGE_BUCKET
+        sync: false
+      - key: VITE_FIREBASE_MESSAGING_SENDER_ID
+        sync: false
+      - key: VITE_FIREBASE_APP_ID
+        sync: false
