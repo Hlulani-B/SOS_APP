@@ -28,12 +28,12 @@ services:
       - key: NODE_VERSION
         value: 22
 
-  - type: static
+  - type: web
     name: sos-web
+    runtime: static
     rootDir: WebApp/sos_app
-    plan: free
     buildCommand: npm ci && npm run build
-    publishPath: dist
+    staticPublishPath: dist
     envVars:
       # Base URL the bundle calls; matches the sos-api service above.
       # No trailing slash. Change if the API is renamed/moved.
