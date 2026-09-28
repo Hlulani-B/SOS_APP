@@ -455,6 +455,7 @@ code {
 /* Reuses .login-google's pill shape, only the width rule differs. */
 .flow-submit {
   width: 100%;
+  margin-top: 28px; /* breathing room between the form fields and the button */
 }
 
 .flow-submit:disabled {
