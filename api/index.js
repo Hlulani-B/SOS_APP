@@ -8,13 +8,15 @@ const app = express();
 
 // Locally the frontend talks to this server through the Vite proxy (same
 // origin, no CORS involved); a deployed frontend on another origin needs
-// explicit permission. CORS_ORIGINS is a comma-separated allowlist, so
-// localhost dev and the deployed site can both be listed. When the env var
-// is not set at all (e.g. the Render dashboard hasn't been updated yet),
-// fall back to this fixed allowlist: the known deployed frontend origins
-// plus the Capacitor WebView origins (Android https/http localhost + iOS
-// custom scheme). An explicit CORS_ORIGINS='' still means "no CORS headers".
-const DEFAULT_CORS_ORIGINS = [
+// explicit permission.
+//
+// The deployed origins below are ALWAYS allowed (merged, not replaced), so a
+// stale or missing CORS_ORIGINS on Render can never lock the live site out.
+// CORS_ORIGINS is purely additive: list any extra dev/preview origins there
+// comma-separated and they join this set. Capacitor WebView origins (Android
+// https/http localhost + iOS custom scheme) are included so the packaged app
+// can reach this API too.
+const DEPLOYED_ORIGINS = [
   'https://sos-web-gdf3.onrender.com',
   'https://sos-web.onrender.com',
   'https://localhost',
@@ -22,13 +24,13 @@ const DEFAULT_CORS_ORIGINS = [
   'capacitor://localhost',
 ];
 
-const allowedOrigins =
-  process.env.CORS_ORIGINS === undefined
-    ? DEFAULT_CORS_ORIGINS
-    : String(process.env.CORS_ORIGINS)
-        .split(',')
-        .map((s) => s.trim())
-        .filter(Boolean);
+const envOrigins = String(process.env.CORS_ORIGINS || '')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);
+
+// Dedupe the union so a value listed in both places is not repeated.
+const allowedOrigins = [...new Set([...DEPLOYED_ORIGINS, ...envOrigins])];
 if (allowedOrigins.length > 0) {
   app.use(cors({ origin: allowedOrigins }));
 }
