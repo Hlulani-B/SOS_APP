@@ -458,6 +458,93 @@ code {
   margin-top: 28px; /* breathing room between the form fields and the button */
 }
 
+/* --- Add-a-pal invite form (onboarding step 4 + Location page panel) --- */
+.pal-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  max-width: 420px;
+  text-align: left;
+}
+
+.pal-form-row {
+  display: flex;
+  gap: 10px;
+  align-items: stretch;
+}
+
+.pal-form-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.pal-form-add {
+  flex-shrink: 0;
+  min-height: 50px;
+  padding: 0 22px;
+  border: none;
+  border-radius: 999px;
+  background: #2563eb;
+  color: #fff;
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.pal-form-add:hover:not(:disabled) { background: #1d4ed8; }
+.pal-form-add:disabled { opacity: 0.6; cursor: default; }
+
+.pal-form-msg {
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.pal-form-msg.ok { color: #166534; }
+.pal-form-msg.err { color: #b91c1c; }
+
+.pal-form-sent {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  color: #475569;
+}
+
+.pal-form-sent li::before {
+  content: "\2713  ";
+  color: #16a34a;
+  font-weight: 700;
+}
+
+/* "Add later" on the onboarding step: a quiet text link under the pill. */
+.pal-skip {
+  margin-top: 10px;
+  padding: 6px 10px;
+  border: none;
+  background: none;
+  color: #2563eb;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.pal-skip:hover { text-decoration: underline; }
+
+.pal-page-note {
+  margin-top: 22px;
+  font-size: 13px;
+  color: #64748b;
+}
+
 .flow-submit:disabled {
   opacity: 0.6;
   cursor: default;

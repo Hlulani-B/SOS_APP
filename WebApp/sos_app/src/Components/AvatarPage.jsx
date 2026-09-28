@@ -30,7 +30,7 @@ export default function AvatarPage({ email, preset, onComplete }) {
 
   return (
     <div className="flow-page">
-      <span className="flow-step">Step 2 of 3</span>
+      <span className="flow-step">Step 2 of 4</span>
       <h1 className="flow-title">Pick a picture</h1>
       <p className="flow-lede">
         This shows up next to your name so the people you add can recognise

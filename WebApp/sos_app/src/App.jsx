@@ -4,6 +4,7 @@ import Login from './Components/login.jsx'
 import SetupPage from './Components/SetupPage.jsx'
 import AvatarPage from './Components/AvatarPage.jsx'
 import GuidePage from './Components/GuidePage.jsx'
+import AddPalsPage from './Components/AddPalsPage.jsx'
 import WeatherPage from './Components/WeatherPage.jsx'
 import LocationPage from './Components/Location.jsx'
 import { VIEWS, readView, navigate, subscribeToNavigation } from './navigation.js'
@@ -20,7 +21,7 @@ import './App.css'
  *
  * The route is decided by Checkuser(email) inside login.jsx:
  *   row exists -> weather          (returning user, straight in)
- *   no row     -> setup -> avatar -> guide -> weather
+ *   no row     -> setup -> avatar -> guide -> pals -> weather
  *
  * VIEWS and the storage key live in navigation.js so SideMenu and every later
  * screen can move the app without a callback being drilled down to them.
@@ -80,7 +81,13 @@ function App() {
   }
 
   if (view === VIEWS.GUIDE) {
-    return <GuidePage onComplete={() => go(VIEWS.WEATHER)} />
+    // The guide ends where meeting people begins: onward to the optional
+    // add-pals step, not straight into the app.
+    return <GuidePage onComplete={() => go(VIEWS.PALS)} />
+  }
+
+  if (view === VIEWS.PALS) {
+    return <AddPalsPage email={email} onComplete={() => go(VIEWS.WEATHER)} />
   }
 
   if (view === VIEWS.GUIDE_SETTINGS) {

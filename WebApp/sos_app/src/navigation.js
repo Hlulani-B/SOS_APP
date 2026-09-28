@@ -14,6 +14,7 @@ export const VIEWS = {
   AVATAR: 'avatar',
   GUIDE: 'guide',
   GUIDE_SETTINGS: 'guide-settings',
+  PALS: 'pals',
   WEATHER: 'weather',
   LOCATION: 'location',
 };

@@ -52,7 +52,7 @@ export default function GuidePage({ onComplete, variant = "onboarding" }) {
   const isSettings = variant === "settings";
   return (
     <div className="guide-page">
-      {!isSettings && <span className="flow-step">Step 3 of 3</span>}
+      {!isSettings && <span className="flow-step">Step 3 of 4</span>}
       {!isSettings && <h1 className="guide-title">Before you start</h1>}
       {!isSettings && (
         <p className="guide-subtitle">

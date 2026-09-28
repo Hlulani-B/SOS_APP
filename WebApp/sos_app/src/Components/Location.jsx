@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { FiBell, FiUserPlus } from "react-icons/fi";
+import { FiBell, FiUserPlus, FiX } from "react-icons/fi";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { MapContainer, Marker, Popup, TileLayer, useMap } from "react-leaflet";
 import SideMenu from "./SideMenu.jsx";
 import SharelocationButton from "./SharelocationButton.jsx";
+import AddPalForm from "./AddPalForm.jsx";
 import { AvatarImage, avatarSrc } from "./avatars.jsx";
-import { get_pals } from "../functions/apiPals.js";
+import { get_pals, get_invites, accept_invite } from "../functions/apiPals.js";
 import { getProfiles } from "../functions/apiUsers.js";
 import { getLocationsByEmails } from "../functions/apiLocation.js";
 import { getLocationAndWeather } from "../functions/getLocationWeather.js";
@@ -19,6 +20,12 @@ import { VIEWS, navigate } from "../navigation.js";
  * control, so this bar just reserves space for it), the "Weather" wordmark,
  * then the two actions. The wordmark doubles as the way back to the forecast,
  * because the side menu only carries a single row and it points here.
+ *
+ * The two header actions open modal panels over the page: the bell is the
+ * invitations inbox (pending invites with accept/reject, badge count when
+ * non-zero) and the right-hand user-plus is the add-a-pal invite form -
+ * the same form the onboarding step shows. Accepting an invite links the
+ * pair server-side, so the pal list reloads right after.
  *
  * The body is a leaflet map of every pal who is live-sharing: get_pals
  * supplies the emails, getProfiles the names + avatars and
@@ -88,6 +95,15 @@ export default function Location({ email }) {
   const [error, setError] = useState(null);
   // email -> { loading, data, error } for the click-to-fetch weather popups
   const [weatherByPal, setWeatherByPal] = useState({});
+  // null | "add" | "invites": which header modal panel is open.
+  const [panel, setPanel] = useState(null);
+  const [invites, setInvites] = useState([]);
+  const [invitesLoading, setInvitesLoading] = useState(false);
+  const [invitesError, setInvitesError] = useState(null);
+  // id of the invite whose Accept/Reject is in flight (disables both rows' buttons)
+  const [inviteBusy, setInviteBusy] = useState(null);
+  // bump to re-run the pals load without changing email (after an accept)
+  const [reloadTick, setReloadTick] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -129,7 +145,40 @@ export default function Location({ email }) {
 
     loadPals();
     return () => { cancelled = true; };
+  }, [email, reloadTick]);
+
+  const refreshInvites = useCallback(async () => {
+    setInvitesLoading(true);
+    setInvitesError(null);
+    try {
+      setInvites(await get_invites(email));
+    } catch (err) {
+      setInvitesError(err.message || "Could not load invitations");
+    } finally {
+      setInvitesLoading(false);
+    }
   }, [email]);
+
+  // Loaded on mount so the bell badge is honest before the panel is opened.
+  useEffect(() => {
+    refreshInvites();
+  }, [refreshInvites]);
+
+  async function answerInvite(invite, status) {
+    setInviteBusy(invite.id);
+    setInvitesError(null);
+    try {
+      // Backend order is (inviter, invitee, status): the invitee is the one
+      // answering an invite that came TO them.
+      await accept_invite(invite.inviter, email, status);
+      setInvites((prev) => prev.filter((i) => i.id !== invite.id));
+      if (status === "accepted") setReloadTick((t) => t + 1);
+    } catch (err) {
+      setInvitesError(err.message || "Could not answer the invitation");
+    } finally {
+      setInviteBusy(null);
+    }
+  }
 
   const onlinePals = useMemo(() => pals.filter((p) => p.lat != null && p.lon != null), [pals]);
 
@@ -255,19 +304,26 @@ export default function Location({ email }) {
               type="button"
               className="loc-icon-btn"
               style={styles.iconButton}
-              aria-label="Add friends"
-              title="Add friends"
+              aria-label="Invitations"
+              title="Invitations"
+              onClick={() => setPanel("invites")}
             >
-              <FiUserPlus size={19} />
+              <span style={styles.bellWrap}>
+                <FiBell size={19} />
+                {invites.length > 0 && (
+                  <span style={styles.badge}>{invites.length}</span>
+                )}
+              </span>
             </button>
             <button
               type="button"
               className="loc-icon-btn"
               style={styles.iconButton}
-              aria-label="Notifications"
-              title="Notifications"
+              aria-label="Add a pal"
+              title="Add a pal"
+              onClick={() => setPanel("add")}
             >
-              <FiBell size={19} />
+              <FiUserPlus size={19} />
             </button>
           </div>
         </div>
@@ -335,6 +391,90 @@ export default function Location({ email }) {
           </div>
         )}
       </main>
+
+      {/* One modal host for both header actions; the backdrop click and the
+          X both close it. stopPropagation keeps clicks inside the card from
+          reaching the backdrop handler. */}
+      {panel && (
+        <div
+          className="loc-modal-backdrop"
+          style={styles.modalBackdrop}
+          onClick={() => setPanel(null)}
+        >
+          <div
+            className="loc-modal"
+            style={styles.modal}
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-label={panel === "add" ? "Add a pal" : "Invitations"}
+          >
+            <div style={styles.modalHead}>
+              <h2 style={styles.modalTitle}>
+                {panel === "add" ? "Add a pal" : "Invitations"}
+              </h2>
+              <button
+                type="button"
+                className="loc-modal-close"
+                style={styles.modalClose}
+                aria-label="Close"
+                onClick={() => setPanel(null)}
+              >
+                <FiX size={18} />
+              </button>
+            </div>
+
+            {panel === "add" ? (
+              <>
+                <p style={styles.modalHint}>
+                  Enter the email address they sign in with. They'll appear on
+                  your map as soon as they accept.
+                </p>
+                <AddPalForm email={email} />
+              </>
+            ) : (
+              <div style={styles.inviteList}>
+                {invitesLoading && invites.length === 0 && (
+                  <div style={styles.palCardMuted}>Loading invitations...</div>
+                )}
+                {invitesError && (
+                  <div style={styles.inviteError}>{invitesError}</div>
+                )}
+                {!invitesLoading && !invites.length && !invitesError && (
+                  <div style={styles.palCardMuted}>
+                    No invitations right now.
+                  </div>
+                )}
+                {invites.map((invite) => (
+                  <div key={invite.id} style={styles.inviteRow}>
+                    <div style={styles.inviteFrom} title={invite.inviter}>
+                      {invite.inviter}
+                    </div>
+                    <div style={styles.inviteBtns}>
+                      <button
+                        type="button"
+                        className="loc-invite-accept"
+                        disabled={inviteBusy === invite.id}
+                        onClick={() => answerInvite(invite, "accepted")}
+                      >
+                        Accept
+                      </button>
+                      <button
+                        type="button"
+                        className="loc-invite-reject"
+                        disabled={inviteBusy === invite.id}
+                        onClick={() => answerInvite(invite, "rejected")}
+                      >
+                        Reject
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -514,6 +654,108 @@ const styles = {
   palCardMuted: {
     fontSize: "13px",
     color: "#999"
+  },
+  bellWrap: {
+    position: "relative",
+    display: "flex"
+  },
+  badge: {
+    position: "absolute",
+    top: "-7px",
+    right: "-8px",
+    minWidth: "16px",
+    height: "16px",
+    padding: "0 4px",
+    boxSizing: "border-box",
+    borderRadius: "8px",
+    background: "#ef4444",
+    color: "#fff",
+    fontSize: "10px",
+    fontWeight: 700,
+    lineHeight: "16px",
+    textAlign: "center"
+  },
+  modalBackdrop: {
+    position: "fixed",
+    inset: 0,
+    background: "rgba(15, 23, 42, 0.4)",
+    display: "flex",
+    alignItems: "flex-start",
+    justifyContent: "center",
+    padding: "80px 16px 24px",
+    zIndex: 100
+  },
+  modal: {
+    width: "100%",
+    maxWidth: "440px",
+    background: "#fff",
+    borderRadius: "16px",
+    border: "1px solid #e5e5e5",
+    boxShadow: "0 12px 40px rgba(0, 0, 0, 0.18)",
+    padding: "18px 20px 22px",
+    textAlign: "left"
+  },
+  modalHead: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: "4px"
+  },
+  modalTitle: {
+    fontSize: "18px",
+    fontWeight: 600,
+    margin: 0,
+    color: "#1a1a1a"
+  },
+  modalClose: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    width: "32px",
+    height: "32px",
+    padding: 0,
+    background: "transparent",
+    border: "none",
+    borderRadius: "50%",
+    color: "#666",
+    cursor: "pointer"
+  },
+  modalHint: {
+    fontSize: "13px",
+    color: "#666",
+    margin: "6px 0 14px",
+    lineHeight: 1.5
+  },
+  inviteList: {
+    display: "flex",
+    flexDirection: "column",
+    marginTop: "8px"
+  },
+  inviteRow: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: "12px",
+    padding: "12px 0",
+    borderBottom: "1px solid #f0f0f0"
+  },
+  inviteFrom: {
+    fontSize: "14px",
+    color: "#1a1a1a",
+    minWidth: 0,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap"
+  },
+  inviteBtns: {
+    display: "flex",
+    gap: "8px",
+    flexShrink: 0
+  },
+  inviteError: {
+    fontSize: "13px",
+    color: "#b91c1c",
+    padding: "8px 0"
   }
 };
 
@@ -538,6 +780,31 @@ const css = `
   }
 
   .loc-pal-card:hover { border-color: #d4d4d4 !important; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.06); }
+
+  .loc-modal-close:hover { background: #f5f5f5 !important; color: #1a1a1a !important; }
+
+  .loc-invite-accept,
+  .loc-invite-reject {
+    border: none;
+    border-radius: 999px;
+    padding: 7px 14px;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s ease;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .loc-invite-accept { background: #2563eb; color: #fff; }
+  .loc-invite-accept:hover:not(:disabled) { background: #1d4ed8; }
+  .loc-invite-reject { background: #f0f0f0; color: #1a1a1a; }
+  .loc-invite-reject:hover:not(:disabled) { background: #e0e0e0; }
+  .loc-invite-accept:disabled,
+  .loc-invite-reject:disabled { opacity: 0.55; cursor: default; }
+
+  @media (max-width: 640px) {
+    .loc-modal-backdrop { padding: 64px 12px 16px !important; }
+  }
 
   @media (max-width: 640px) {
     .loc-header { padding: 0 16px !important; }

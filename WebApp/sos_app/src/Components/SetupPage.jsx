@@ -51,7 +51,7 @@ export default function SetupPage({ email, preset, onComplete }) {
 
   return (
     <form className="flow-page" onSubmit={handleSubmit}>
-      <span className="flow-step">Step 1 of 3</span>
+      <span className="flow-step">Step 1 of 4</span>
       <h1 className="flow-title">Tell us who you are</h1>
       <p className="flow-lede">
         This is the name that appears on your profile and beside anything you
