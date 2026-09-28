@@ -9,11 +9,26 @@ const app = express();
 // Locally the frontend talks to this server through the Vite proxy (same
 // origin, no CORS involved); a deployed frontend on another origin needs
 // explicit permission. CORS_ORIGINS is a comma-separated allowlist, so
-// localhost dev and the deployed site can both be listed.
-const allowedOrigins = String(process.env.CORS_ORIGINS || '')
-  .split(',')
-  .map((s) => s.trim())
-  .filter(Boolean);
+// localhost dev and the deployed site can both be listed. When the env var
+// is not set at all (e.g. the Render dashboard hasn't been updated yet),
+// fall back to this fixed allowlist: the known deployed frontend origins
+// plus the Capacitor WebView origins (Android https/http localhost + iOS
+// custom scheme). An explicit CORS_ORIGINS='' still means "no CORS headers".
+const DEFAULT_CORS_ORIGINS = [
+  'https://sos-web-gdf3.onrender.com',
+  'https://sos-web.onrender.com',
+  'https://localhost',
+  'http://localhost',
+  'capacitor://localhost',
+];
+
+const allowedOrigins =
+  process.env.CORS_ORIGINS === undefined
+    ? DEFAULT_CORS_ORIGINS
+    : String(process.env.CORS_ORIGINS)
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
 if (allowedOrigins.length > 0) {
   app.use(cors({ origin: allowedOrigins }));
 }
