@@ -6,40 +6,22 @@ import usersRouter from './routes/users.js';
 
 const app = express();
 
-// Locally the frontend talks to this server through the Vite proxy (same
-// origin, no CORS involved); a deployed frontend on another origin needs
-// explicit permission.
-//
-// The deployed origins below are ALWAYS allowed (merged, not replaced), so a
-// stale or missing CORS_ORIGINS on Render can never lock the live site out.
-// CORS_ORIGINS is purely additive: list any extra dev/preview origins there
-// comma-separated and they join this set. Capacitor WebView origins (Android
-// https/http localhost + iOS custom scheme) are included so the packaged app
-// can reach this API too.
-const DEPLOYED_ORIGINS = [
-  'https://sos-web-gdf3.onrender.com',
-  'https://sos-web.onrender.com',
-  'https://localhost',
-  'http://localhost',
-  'capacitor://localhost',
-];
-
-const envOrigins = String(process.env.CORS_ORIGINS || '')
-  .split(',')
-  .map((s) => s.trim())
-  .filter(Boolean);
-
-// Dedupe the union so a value listed in both places is not repeated.
-const allowedOrigins = [...new Set([...DEPLOYED_ORIGINS, ...envOrigins])];
-if (allowedOrigins.length > 0) {
-  app.use(cors({ origin: allowedOrigins }));
-}
+// CORS: allow every origin, unconditionally. This API has no authenticated
+// endpoints (email-keyed lookups behind a weather-app disguise), so an
+// origin allowlist only created failure modes - a stale CORS_ORIGINS on
+// Render kept blocking the live site even after the code merged defaults.
+// cors() with no options echoes Access-Control-Allow-Origin: * for every
+// request and preflight, with zero env involved. CORS_ORIGINS is now ignored.
+app.use(cors());
 
 app.use(express.json());
 
 app.get('/', (_req, res) => {
   res.json({
     ok: true,
+    // Deploy fingerprint: presence of this key proves the wildcard-CORS
+    // build is live; remove only once every client has been verified.
+    cors: 'wildcard',
     routes: {
       '/api/location': ['addEmail', 'ShareLocation', 'StopLiveLocation', 'getLocationsByEmails'],
       '/api/pals': [
