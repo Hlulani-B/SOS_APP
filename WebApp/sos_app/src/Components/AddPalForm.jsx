@@ -39,13 +39,16 @@ export default function AddPalForm({ email, onAdded }) {
       if (onAdded) onAdded(invitee);
     } catch (err) {
       const raw = err.message || "Could not send the invitation.";
-      let text = raw;
-      if (/fkey|foreign key/i.test(raw)) {
+      // The API now answers "not registered" with ready-to-show wording sent
+      // from send_invite itself; older builds threw raw Postgres foreign-key
+      // text. Both shapes are mapped here so the copy stays kind on either.
+      let text = raw.replace(/^send_invite:\s*/, "");
+      if (/fkey|foreign key|hasn't set up|doesn't have an account/i.test(raw)) {
         text = `${invitee} hasn't set up an account yet — ask them to sign in first.`;
       } else if (/already invited/i.test(raw)) {
         text = `You've already invited ${invitee}.`;
       }
-      setMessage({ kind: "err", text });
+      setMessage({ kind: "err", text: text || "Could not send the invitation." });
     } finally {
       setBusy(false);
     }

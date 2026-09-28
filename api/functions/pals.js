@@ -34,6 +34,23 @@ function unlinkOneWay(executor, email, palEmail) {
   );
 }
 
+/**
+ * Marks an Error as a client-facing failure with a specific HTTP status.
+ * caller.js honors err.status, so mistakes like "that email isn't registered
+ * yet" stop arriving as generic 500s with raw Postgres text.
+ */
+function clientError(status, message) {
+  const err = new Error(message);
+  err.status = status;
+  return err;
+}
+
+/** True when the users table has a row for this email. */
+async function isRegistered(email) {
+  const { rowCount } = await pool.query('SELECT 1 FROM users WHERE email = $1', [email]);
+  return rowCount > 0;
+}
+
 export class Pals {
   /**
    * Records an invite from `inviter` to `invitee` with status 'pending'.
@@ -49,6 +66,20 @@ export class Pals {
    * different types for it and reject the statement.
    */
   async send_invite(inviter, invitee) {
+    // invite's FKs demand users rows on both sides; without this pre-check an
+    // invite to a never-signed-up email dies in Postgres and shows up as a 500
+    // with foreign-key text. Checked sequentially so the invitee-missing case
+    // gets its own message even when neither email is registered.
+    if (!(await isRegistered(inviter))) {
+      throw clientError(400, `send_invite: ${inviter} is not registered.`);
+    }
+    if (!(await isRegistered(invitee))) {
+      throw clientError(
+        400,
+        `send_invite: ${invitee} doesn't have an account yet — they must sign in once before they can be invited.`
+      );
+    }
+
     const { rows } = await pool.query(
       `INSERT INTO invite (inviter, invitee, status)
        SELECT $1::varchar, $2::varchar, 'pending'
@@ -60,7 +91,7 @@ export class Pals {
     );
 
     if (rows.length === 0) {
-      throw new Error(`send_invite: ${inviter} has already invited ${invitee}`);
+      throw clientError(409, `send_invite: ${inviter} has already invited ${invitee}`);
     }
 
     return rows[0].id;
@@ -96,7 +127,7 @@ export class Pals {
     );
 
     if (rows.length === 0) {
-      throw new Error(`get_pals found no users row for ${email}`);
+      throw clientError(404, `get_pals found no users row for ${email}`);
     }
 
     return rows[0].pals_email ?? [];
@@ -115,7 +146,7 @@ export class Pals {
 
     if (one.rowCount === 0 || two.rowCount === 0) {
       const missing = one.rowCount === 0 ? email1 : email2;
-      throw new Error(`make_pals found no users row for ${missing}`);
+      throw clientError(404, `make_pals found no users row for ${missing}`);
     }
   }
 
@@ -129,7 +160,7 @@ export class Pals {
    */
   async accept_invite(email1, email2, status) {
     if (status !== 'accepted' && status !== 'rejected') {
-      throw new Error(`accept_invite expects status 'accepted' or 'rejected', got '${status}'`);
+      throw clientError(400, `accept_invite expects status 'accepted' or 'rejected', got '${status}'`);
     }
 
     const client = await pool.connect();
@@ -144,7 +175,7 @@ export class Pals {
       );
 
       if (rowCount === 0) {
-        throw new Error(`accept_invite found no pending invite from ${email1} to ${email2}`);
+        throw clientError(404, `accept_invite found no pending invite from ${email1} to ${email2}`);
       }
 
       if (status === 'accepted') {
@@ -176,7 +207,7 @@ export class Pals {
 
       if (one.rowCount === 0 || two.rowCount === 0) {
         const missing = one.rowCount === 0 ? email1 : email2;
-        throw new Error(`remove_pal found no users row for ${missing}`);
+        throw clientError(404, `remove_pal found no users row for ${missing}`);
       }
 
       await client.query(

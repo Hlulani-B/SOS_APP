@@ -34,7 +34,11 @@ export async function callFunction(instance, allowed, body) {
   } catch (err) {
     // The function modules all throw with the input in the message, which is
     // what the caller needs to know; anything deeper stays in the server log.
+    // A function may attach err.status to classify the failure as a client
+    // error (bad input, missing rows, duplicates) instead of a server fault;
+    // unmarked errors keep the historic 500 so nothing else changes.
     console.error(`${fn} failed:`, err);
-    return { status: 500, payload: { ok: false, function: fn, error: err.message } };
+    const status = Number.isInteger(err.status) ? err.status : 500;
+    return { status, payload: { ok: false, function: fn, error: err.message } };
   }
 }
