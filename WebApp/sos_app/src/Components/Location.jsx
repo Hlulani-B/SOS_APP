@@ -30,7 +30,9 @@ import { VIEWS, navigate } from "../navigation.js";
  *
  * The body is a leaflet map of every pal who is live-sharing: get_pals
  * supplies the emails, getProfiles the names + avatars and
- * getLocationsByEmails the coordinates. Markers carry the pal's avatar;
+ * getLocationsByEmails the coordinates. The whole list is re-read every
+ * PALS_POLL_MS, matching the sharing broadcast cadence, so a pal coming
+ * online or going quiet shows up without a reload. Markers carry the pal's avatar;
  * below the map a card per pal shows online/offline state, and for the
  * online ones the street / town / province plus the current weather there
  * (getLocationAndWeather, prefetched once per sharing pal on load and
@@ -42,6 +44,10 @@ import { VIEWS, navigate } from "../navigation.js";
  */
 
 const MAP_FALLBACK_CENTER = [-28.5, 24.0]; // heart of South Africa, seen before pals land
+
+// pals re-read cadence; mirrors INTERVAL_MS in functions/liveLocation.js so
+// the map moves within one broadcast of the sharing side sending it.
+const PALS_POLL_MS = 10000;
 
 // South Africa with a little sea room, as [[south, west], [north, east]].
 const SA_BOUNDS = [[-36.0, 15.5], [-21.0, 33.5]];
@@ -57,6 +63,25 @@ function makeAvatarIcon(id) {
     iconSize: [44, 44],
     iconAnchor: [22, 22],
     popupAnchor: [0, -26]
+  });
+}
+
+// Cheap pal-list equality. When nothing moved, the 10s poll keeps the old
+// array reference so React skips the re-render - without this, every tick
+// would hand FitToPals a fresh markers array and yank the viewport back
+// to the fitted bounds while the user is mid-pan.
+function samePals(a, b) {
+  if (a.length !== b.length) return false;
+  return a.every((p, i) => {
+    const q = b[i];
+    return (
+      p.email === q.email &&
+      p.name === q.name &&
+      p.surname === q.surname &&
+      p.avatar === q.avatar &&
+      p.lat === q.lat &&
+      p.lon === q.lon
+    );
   });
 }
 
@@ -108,12 +133,20 @@ export default function Location({ email }) {
   // bump to re-run the pals load without changing email (after an accept)
   const [reloadTick, setReloadTick] = useState(0);
 
+  // Sharing devices tick every 10s (functions/liveLocation.js), so reading
+  // the table on the same cadence turns a pal online/offline within one
+  // broadcast instead of only on page load.
   useEffect(() => {
     let cancelled = false;
+    let booted = false; // first load done (success or failure)?
+    let inFlight = false; // never overlap a slow fetch with the next tick
 
     async function loadPals() {
-      setLoading(true);
-      setError(null);
+      if (inFlight) return;
+      inFlight = true;
+      // Only the first load may blank the map via loading/error - a poll
+      // that briefly fails keeps the last known picture on screen.
+      if (!booted) setError(null);
       try {
         const emails = await get_pals(email);
 
@@ -128,26 +161,35 @@ export default function Location({ email }) {
         const locationByEmail = new Map(locations.map((l) => [l.email, l]));
 
         if (!cancelled) {
-          setPals(
-            profiles.map((profile) => ({
+          setPals((prev) => {
+            const next = profiles.map((profile) => ({
               email: profile.email,
               name: profile.name,
               surname: profile.surname,
               avatar: profile.avatar,
               lat: locationByEmail.get(profile.email) ? Number(locationByEmail.get(profile.email).latitude) : null,
               lon: locationByEmail.get(profile.email) ? Number(locationByEmail.get(profile.email).longitude) : null
-            }))
-          );
+            }));
+            return samePals(prev, next) ? prev : next;
+          });
         }
       } catch (err) {
-        if (!cancelled) setError(err.message || "Could not load pals");
+        if (!cancelled && !booted) setError(err.message || "Could not load pals");
       } finally {
-        if (!cancelled) setLoading(false);
+        inFlight = false;
+        if (!cancelled) {
+          booted = true;
+          setLoading(false);
+        }
       }
     }
 
     loadPals();
-    return () => { cancelled = true; };
+    const timer = setInterval(loadPals, PALS_POLL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
   }, [email, reloadTick]);
 
   const refreshInvites = useCallback(async () => {
