@@ -22,6 +22,14 @@ export async function get_invites(invitee) {
 }
 
 /**
+ * All invites this user has sent, in every status (pending/accepted/rejected).
+ * @returns {Promise<Array<{ id, inviter, invitee, status }>>}
+ */
+export async function get_sent_invites(inviter) {
+  return callApi("pals", "get_sent_invites", [inviter]);
+}
+
+/**
  * The email list this user is pals with (empty array when they have none).
  * @returns {Promise<string[]>}
  */

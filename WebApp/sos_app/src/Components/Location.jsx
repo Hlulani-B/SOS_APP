@@ -7,7 +7,7 @@ import SideMenu from "./SideMenu.jsx";
 import SharelocationButton from "./SharelocationButton.jsx";
 import AddPalForm from "./AddPalForm.jsx";
 import { AvatarImage, avatarSrc } from "./avatars.jsx";
-import { get_pals, get_invites, accept_invite } from "../functions/apiPals.js";
+import { get_pals, get_invites, get_sent_invites, accept_invite } from "../functions/apiPals.js";
 import { getProfiles } from "../functions/apiUsers.js";
 import { getLocationsByEmails } from "../functions/apiLocation.js";
 import { getLocationAndWeather } from "../functions/getLocationWeather.js";
@@ -22,10 +22,11 @@ import { VIEWS, navigate } from "../navigation.js";
  * because the side menu only carries a single row and it points here.
  *
  * The two header actions open modal panels over the page: the bell is the
- * invitations inbox (pending invites with accept/reject, badge count when
- * non-zero) and the right-hand user-plus is the add-a-pal invite form -
- * the same form the onboarding step shows. Accepting an invite links the
- * pair server-side, so the pal list reloads right after.
+ * notifications view (invites sent, with their status, above the pending
+ * invites addressed to you with accept/reject; badge counts the latter) and
+ * the right-hand user-plus is the add-a-pal invite form - the same form the
+ * onboarding step shows. Accepting an invite links the pair server-side, so
+ * the pal list reloads right after.
  *
  * The body is a leaflet map of every pal who is live-sharing: get_pals
  * supplies the emails, getProfiles the names + avatars and
@@ -98,6 +99,8 @@ export default function Location({ email }) {
   // null | "add" | "invites": which header modal panel is open.
   const [panel, setPanel] = useState(null);
   const [invites, setInvites] = useState([]);
+  // invites the user sent, in every status - shown above the received ones
+  const [sentInvites, setSentInvites] = useState([]);
   const [invitesLoading, setInvitesLoading] = useState(false);
   const [invitesError, setInvitesError] = useState(null);
   // id of the invite whose Accept/Reject is in flight (disables both rows' buttons)
@@ -151,7 +154,14 @@ export default function Location({ email }) {
     setInvitesLoading(true);
     setInvitesError(null);
     try {
-      setInvites(await get_invites(email));
+      // Received and sent load together so the panel shows both halves of
+      // the invite table from one refresh.
+      const [received, sent] = await Promise.all([
+        get_invites(email),
+        get_sent_invites(email),
+      ]);
+      setInvites(received);
+      setSentInvites(sent);
     } catch (err) {
       setInvitesError(err.message || "Could not load invitations");
     } finally {
@@ -407,11 +417,11 @@ export default function Location({ email }) {
             onClick={(e) => e.stopPropagation()}
             role="dialog"
             aria-modal="true"
-            aria-label={panel === "add" ? "Add a pal" : "Invitations"}
+            aria-label={panel === "add" ? "Add a pal" : "Notifications"}
           >
             <div style={styles.modalHead}>
               <h2 style={styles.modalTitle}>
-                {panel === "add" ? "Add a pal" : "Invitations"}
+                {panel === "add" ? "Add a pal" : "Notifications"}
               </h2>
               <button
                 type="button"
@@ -430,19 +440,43 @@ export default function Location({ email }) {
                   Enter the email address they sign in with. They'll appear on
                   your map as soon as they accept.
                 </p>
-                <AddPalForm email={email} />
+                <AddPalForm email={email} onAdded={() => refreshInvites()} />
               </>
             ) : (
               <div style={styles.inviteList}>
-                {invitesLoading && invites.length === 0 && (
+                {invitesLoading && invites.length === 0 && sentInvites.length === 0 && (
                   <div style={styles.palCardMuted}>Loading invitations...</div>
                 )}
                 {invitesError && (
                   <div style={styles.inviteError}>{invitesError}</div>
                 )}
+
+                <div style={styles.inviteSection}>Invites you sent</div>
+                {!invitesLoading && !sentInvites.length && (
+                  <div style={styles.palCardMuted}>
+                    You haven't invited anyone yet.
+                  </div>
+                )}
+                {sentInvites.map((invite) => {
+                  const status = SENT_STATUS[invite.status] || SENT_STATUS.pending;
+                  return (
+                    <div key={invite.id} style={styles.inviteRow}>
+                      <div style={styles.inviteFrom} title={invite.invitee}>
+                        {invite.invitee}
+                      </div>
+                      <div
+                        style={{ ...styles.sentStatus, color: status.color }}
+                      >
+                        {status.label}
+                      </div>
+                    </div>
+                  );
+                })}
+
+                <div style={styles.inviteSection}>Invites for you</div>
                 {!invitesLoading && !invites.length && !invitesError && (
                   <div style={styles.palCardMuted}>
-                    No invitations right now.
+                    No invitations waiting on you.
                   </div>
                 )}
                 {invites.map((invite) => (
@@ -683,7 +717,9 @@ const styles = {
     alignItems: "flex-start",
     justifyContent: "center",
     padding: "80px 16px 24px",
-    zIndex: 100
+    // Above everything Leaflet stacks inside the map container (panes top
+    // out at 700, controls at 800) - at 100 the modal sank behind the map.
+    zIndex: 1000
   },
   modal: {
     width: "100%",
@@ -752,11 +788,32 @@ const styles = {
     gap: "8px",
     flexShrink: 0
   },
+  inviteSection: {
+    fontSize: "12px",
+    fontWeight: 700,
+    textTransform: "uppercase",
+    letterSpacing: "0.06em",
+    color: "#8a8a8a",
+    margin: "14px 0 2px"
+  },
+  sentStatus: {
+    fontSize: "13px",
+    fontWeight: 600,
+    flexShrink: 0,
+    whiteSpace: "nowrap"
+  },
   inviteError: {
     fontSize: "13px",
     color: "#b91c1c",
     padding: "8px 0"
   }
+};
+
+// How a sent invite's status reads in the notifications panel.
+const SENT_STATUS = {
+  pending: { label: "Waiting", color: "#b45309" },
+  accepted: { label: "Friends", color: "#16a34a" },
+  rejected: { label: "Declined", color: "#dc2626" },
 };
 
 const css = `

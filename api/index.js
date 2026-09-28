@@ -27,6 +27,7 @@ app.get('/', (_req, res) => {
       '/api/pals': [
         'send_invite',
         'get_invites',
+        'get_sent_invites',
         'get_pals',
         'make_pals',
         'accept_invite',

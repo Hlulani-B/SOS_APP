@@ -114,6 +114,23 @@ export class Pals {
   }
 
   /**
+   * The invites this user has sent, in every status — the notification panel
+   * shows them so senders can see who is still 'pending', who accepted and
+   * who declined.
+   */
+  async get_sent_invites(inviter) {
+    const { rows } = await pool.query(
+      `SELECT id, inviter, invitee, status
+         FROM invite
+        WHERE inviter = $1
+     ORDER BY id`,
+      [inviter]
+    );
+
+    return rows;
+  }
+
+  /**
    * The emails this user is pals with, read from their pals_email array in the
    * users table. A NULL array comes back as an empty list, so callers can always
    * iterate without a null check.

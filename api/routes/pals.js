@@ -7,6 +7,7 @@ const pals = new Pals();
 const ALLOWED = [
   'send_invite',
   'get_invites',
+  'get_sent_invites',
   'get_pals',
   'make_pals',
   'accept_invite',
