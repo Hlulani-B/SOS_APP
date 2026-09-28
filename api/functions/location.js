@@ -1,5 +1,9 @@
 import { pool } from '../db.js';
 
+// How long a shared position counts as live: three missed broadcasts of the
+// app's 10s share loop, with slack for network jitter and Render cold starts.
+const PRESENCE_TTL_SECONDS = 30;
+
 /**
  * Resolves the device's current coordinates through the geolocation API,
  * with the same options the SOS app uses. A Node server has no geolocation,
@@ -36,16 +40,23 @@ export class Location {
    * ever called addEmail - so the share toggle could never turn on. The
    * ON CONFLICT keeps StopLiveLocation's contract: the row stays and only
    * the coordinates clear, so sharing can always resume.
+   *
+   * Every write stamps last_shared = now(); that stamp, not the coordinates
+   * themselves, is what makes a pal "online" (see getLocationsByEmails), so
+   * a device that goes silent without a clean stop - force-quit, crash, a
+   * failed or raced StopLiveLocation call - ages out instead of posing as
+   * online forever.
    */
   async ShareLocation(email, coordinates) {
     const position = coordinates ?? await getCurrentPosition();
 
     await pool.query(
-      `INSERT INTO locations (email, latitude, longitude)
-       VALUES ($3, $1, $2)
+      `INSERT INTO locations (email, latitude, longitude, last_shared)
+       VALUES ($3, $1, $2, now())
        ON CONFLICT (email) DO UPDATE
          SET latitude = EXCLUDED.latitude,
-             longitude = EXCLUDED.longitude`,
+             longitude = EXCLUDED.longitude,
+             last_shared = now()`,
       [position.latitude, position.longitude, email]
     );
   }
@@ -73,9 +84,14 @@ export class Location {
 
   /**
    * Batch read for the map screen: the last shared coordinates for each
-   * email asked for. Rows whose coordinates are NULL (never shared, or
-   * live sharing stopped) are excluded here, so callers only ever receive
-   * plottable positions.
+   * email asked for, limited to positions still fresh enough to count as
+   * live. A pal is ONLINE only while they keep stamping last_shared (the
+   * app broadcasts every 10s); rows older than PRESENCE_TTL are excluded
+   * here even if coordinates are present, so any unclean exit - toggle-off
+   * whose request was lost, a late in-flight share re-writing the coords,
+   * force-quit, crash - self-heals into OFFLINE. Rows whose coordinates are
+   * NULL (never shared, or stopped cleanly) are excluded as before, so
+   * callers only ever receive plottable, current positions.
    */
   async getLocationsByEmails(emails) {
     const { rows } = await pool.query(
@@ -83,7 +99,8 @@ export class Location {
          FROM locations
         WHERE email = ANY($1::text[])
           AND latitude IS NOT NULL
-          AND longitude IS NOT NULL`,
+          AND longitude IS NOT NULL
+          AND last_shared > now() - interval '${PRESENCE_TTL_SECONDS} seconds'`,
       [emails]
     );
 

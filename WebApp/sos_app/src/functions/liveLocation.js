@@ -82,6 +82,14 @@ export function stop() {
   const email = activeEmail;
   activeEmail = null;
   StopLiveLocation(email).catch((err) => console.error(err));
+  // A ShareLocation fired moments before the toggle can still be on the wire
+  // and land AFTER this clear, re-writing the coordinates (this race is how a
+  // stopped sharer stayed "online"). Repeat the clear once, late enough to
+  // overtake any in-flight share; the server's 30s presence TTL backstops
+  // even this retry if it is lost too.
+  setTimeout(() => {
+    StopLiveLocation(email).catch((err) => console.error(err));
+  }, 3000);
   emit();
 }
 
