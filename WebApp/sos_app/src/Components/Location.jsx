@@ -7,7 +7,7 @@ import SideMenu from "./SideMenu.jsx";
 import SharelocationButton from "./SharelocationButton.jsx";
 import AddPalForm from "./AddPalForm.jsx";
 import { AvatarImage, avatarSrc } from "./avatars.jsx";
-import { get_pals, get_invites, get_sent_invites, accept_invite } from "../functions/apiPals.js";
+import { get_pals, get_invites, get_sent_invites, accept_invite, remove_pal } from "../functions/apiPals.js";
 import { getProfiles } from "../functions/apiUsers.js";
 import { getLocationsByEmails } from "../functions/apiLocation.js";
 import { getLocationAndWeather } from "../functions/getLocationWeather.js";
@@ -146,6 +146,13 @@ export default function Location({ email }) {
   const [invitesError, setInvitesError] = useState(null);
   // id of the invite whose Accept/Reject is in flight (disables both rows' buttons)
   const [inviteBusy, setInviteBusy] = useState(null);
+  // pal card whose "Remove" was tapped once - it shows "Confirm remove" until
+  // second tap (or a 5s stand-down), so a slipped thumb cannot silently
+  // delete someone from her trusted circle.
+  const [removeArm, setRemoveArm] = useState(null);
+  const [removingEmail, setRemovingEmail] = useState(null);
+  // { email, text } of the card whose removal failed server-side
+  const [removeError, setRemoveError] = useState(null);
   // bump to re-run the pals load without changing email (after an accept)
   const [reloadTick, setReloadTick] = useState(0);
 
@@ -353,6 +360,44 @@ export default function Location({ email }) {
       .join(", ");
   }
 
+  // An armed Remove quietly stands down after 5s of not being confirmed.
+  useEffect(() => {
+    if (!removeArm) return;
+    const timer = setTimeout(() => setRemoveArm(null), 5000);
+    return () => clearTimeout(timer);
+  }, [removeArm]);
+
+  // First tap arms the confirmation, second tap un-links the pair for real
+  // (remove_pal clears both directions and the invite row between them).
+  async function handleRemovePal(pal) {
+    setRemoveError(null);
+    if (removeArm !== pal.email) {
+      setRemoveArm(pal.email);
+      return;
+    }
+    setRemoveArm(null);
+    setRemovingEmail(pal.email);
+    try {
+      await remove_pal(email, pal.email);
+      // Drop the pal now instead of waiting up to 10s for the next poll
+      // (which then sees the same list and keeps this reference anyway),
+      // and forget their weather-prefetch slot so re-adding them later
+      // starts fresh.
+      setPals((prev) => prev.filter((p) => p.email !== pal.email));
+      setWeatherByPal((prev) => {
+        if (!(pal.email in prev)) return prev;
+        const next = { ...prev };
+        delete next[pal.email];
+        return next;
+      });
+      requestedRef.current.delete(pal.email);
+    } catch (err) {
+      setRemoveError({ email: pal.email, text: err.message || "Could not remove this pal" });
+    } finally {
+      setRemovingEmail(null);
+    }
+  }
+
   const renderPalCard = (pal) => {
     const online = pal.lat != null && pal.lon != null;
     const entry = weatherByPal[pal.email];
@@ -373,7 +418,28 @@ export default function Location({ email }) {
               {online ? "Online" : "Offline"}
             </div>
           </div>
+          <button
+            type="button"
+            style={{
+              ...styles.palCardRemove,
+              background: removeArm === pal.email ? "#dc2626" : "transparent",
+              color: removeArm === pal.email ? "#fff" : "#8a8a8a",
+              borderColor: removeArm === pal.email ? "#dc2626" : "#e0e0e0"
+            }}
+            disabled={removingEmail === pal.email}
+            onClick={() => handleRemovePal(pal)}
+          >
+            {removingEmail === pal.email
+              ? "Removing…"
+              : removeArm === pal.email
+                ? "Confirm remove"
+                : "Remove"}
+          </button>
         </div>
+
+        {removeError && removeError.email === pal.email && (
+          <div style={{ ...styles.palCardMuted, color: "#dc2626" }}>{removeError.text}</div>
+        )}
 
         {online ? (
           <div style={styles.palCardBody}>
@@ -745,6 +811,17 @@ const styles = {
     display: "flex",
     alignItems: "center",
     gap: "12px"
+  },
+  palCardRemove: {
+    marginLeft: "auto",
+    flexShrink: 0,
+    padding: "5px 10px",
+    fontSize: "12px",
+    fontFamily: "inherit",
+    border: "1px solid #e0e0e0",
+    borderRadius: 999,
+    cursor: "pointer",
+    transition: "background 0.15s ease, color 0.15s ease, border-color 0.15s ease"
   },
   palCardIdentity: {
     minWidth: 0 // lets a long name ellipsis inside the flex row
