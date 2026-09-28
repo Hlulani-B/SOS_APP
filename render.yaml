@@ -23,8 +23,13 @@ services:
     envVars:
       - key: DATABASE_URL # pooled Neon connection string - set in dashboard
         sync: false
-      - key: CORS_ORIGINS # comma-separated frontend origins allowed here
-        value: https://sos-web.onrender.com
+      - key: CORS_ORIGINS # comma-separated origins allowed here; the last three
+        # are the Capacitor WebView origins (Android https/http localhost + iOS
+        # custom scheme) so the packaged app can reach this API.
+        # NOTE: this must be the ACTUAL sos-web URL - Render appends a random
+        # suffix (e.g. -gdf3) when the name "sos-web" is already taken, and a
+        # wrong entry here makes every browser fetch fail with a CORS error.
+        value: https://sos-web-gdf3.onrender.com,https://localhost,http://localhost,capacitor://localhost
       - key: NODE_VERSION
         value: 22
 
@@ -38,7 +43,7 @@ services:
       # Base URL the bundle calls; matches the sos-api service above.
       # No trailing slash. Change if the API is renamed/moved.
       - key: VITE_API_BASE
-        value: https://sos-api.onrender.com
+        value: https://sos-api-snlt.onrender.com
       # Firebase project identity (public values, safe to commit).
       - key: VITE_FIREBASE_API_KEY
         sync: false
