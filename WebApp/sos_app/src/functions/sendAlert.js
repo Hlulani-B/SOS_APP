@@ -19,6 +19,8 @@
  * in the email body instead, because the alert itself must ALWAYS go out.
  */
 
+import { get_pals } from './apiPals.js';
+
 const RESEND_ENDPOINT = "/api/emails";
 const ALERT_FROM = import.meta.env.VITE_ALERT_FROM_EMAIL || "Safe <onboarding@resend.dev>";
 
@@ -75,31 +77,34 @@ function explainResendError(raw) {
 }
 
 export async function sendAlertEmail(subject, text, attachments = []) {
-  // Contacts come only from localStorage - nothing is hardcoded
-  const stored = localStorage.getItem("sa_sos_contacts");
-  let contacts = [];
-  if (stored) {
-    try {
-      contacts = JSON.parse(stored);
-    } catch (e) {}
-  }
-
-  if (contacts.length === 0) {
-    console.warn("No emergency contacts found.");
+  // Recipients are the signed-in user's trusted pals, read live from the
+  // backend (users.pals_email) instead of a cached localStorage contact list,
+  // so an invite accepted on another device is reflected the very next time
+  // an alert fires. The email comes from the session key written at sign-in.
+  const email = localStorage.getItem("sos_email");
+  if (!email) {
+    console.warn("sendAlertEmail: no signed-in email - cannot resolve recipients.");
     return false;
   }
 
-  // New contacts store an email; older rows may have used the phone field
-  const recipients = [
-    ...new Set(
-      contacts
-        .map((c) => (c.email || c.phone || "").trim())
-        .filter((v) => v.includes("@"))
-    )
-  ];
+  let recipients = [];
+  try {
+    const pals = await get_pals(email);
+    // get_pals returns a plain email[]; dedupe and keep only real addresses.
+    recipients = [
+      ...new Set(
+        (pals || [])
+          .map((e) => String(e).trim())
+          .filter((v) => v.includes("@"))
+      )
+    ];
+  } catch (err) {
+    console.error(`sendAlertEmail: could not load pals for ${email}:`, err.message || err);
+    return false;
+  }
 
   if (recipients.length === 0) {
-    console.warn("No contact has an email address - add one on the setup page.");
+    console.warn("No trusted contacts (pals) on the backend - add some before an alert can be sent.");
     return false;
   }
 
