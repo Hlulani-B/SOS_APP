@@ -146,10 +146,10 @@ export default function Location({ email }) {
   const [invitesError, setInvitesError] = useState(null);
   // id of the invite whose Accept/Reject is in flight (disables both rows' buttons)
   const [inviteBusy, setInviteBusy] = useState(null);
-  // pal card whose "Remove" was tapped once - it shows "Confirm remove" until
-  // second tap (or a 5s stand-down), so a slipped thumb cannot silently
-  // delete someone from her trusted circle.
-  const [removeArm, setRemoveArm] = useState(null);
+  // The pal shown in the "Remove pal" confirmation dialog. Un-linking is
+  // silent for both sides and only a fresh invite can undo it, so a card tap
+  // never triggers it directly - the dialog below has to be passed through.
+  const [removeTarget, setRemoveTarget] = useState(null);
   const [removingEmail, setRemovingEmail] = useState(null);
   // { email, text } of the card whose removal failed server-side
   const [removeError, setRemoveError] = useState(null);
@@ -360,22 +360,11 @@ export default function Location({ email }) {
       .join(", ");
   }
 
-  // An armed Remove quietly stands down after 5s of not being confirmed.
-  useEffect(() => {
-    if (!removeArm) return;
-    const timer = setTimeout(() => setRemoveArm(null), 5000);
-    return () => clearTimeout(timer);
-  }, [removeArm]);
-
-  // First tap arms the confirmation, second tap un-links the pair for real
+  // Driven by the confirm dialog's Remove button: un-links the pair for real
   // (remove_pal clears both directions and the invite row between them).
-  async function handleRemovePal(pal) {
-    setRemoveError(null);
-    if (removeArm !== pal.email) {
-      setRemoveArm(pal.email);
-      return;
-    }
-    setRemoveArm(null);
+  async function confirmRemovePal() {
+    const pal = removeTarget;
+    if (!pal) return;
     setRemovingEmail(pal.email);
     try {
       await remove_pal(email, pal.email);
@@ -391,7 +380,11 @@ export default function Location({ email }) {
         return next;
       });
       requestedRef.current.delete(pal.email);
+      setRemoveTarget(null);
     } catch (err) {
+      // The dialog closes and the reason lands on the affected card, which
+      // is the same place it appeared before this flow existed.
+      setRemoveTarget(null);
       setRemoveError({ email: pal.email, text: err.message || "Could not remove this pal" });
     } finally {
       setRemovingEmail(null);
@@ -420,20 +413,14 @@ export default function Location({ email }) {
           </div>
           <button
             type="button"
-            style={{
-              ...styles.palCardRemove,
-              background: removeArm === pal.email ? "#dc2626" : "transparent",
-              color: removeArm === pal.email ? "#fff" : "#8a8a8a",
-              borderColor: removeArm === pal.email ? "#dc2626" : "#e0e0e0"
-            }}
+            style={styles.palCardRemove}
             disabled={removingEmail === pal.email}
-            onClick={() => handleRemovePal(pal)}
+            onClick={() => {
+              setRemoveError(null);
+              setRemoveTarget(pal);
+            }}
           >
-            {removingEmail === pal.email
-              ? "Removing…"
-              : removeArm === pal.email
-                ? "Confirm remove"
-                : "Remove"}
+            Remove
           </button>
         </div>
 
@@ -678,6 +665,62 @@ export default function Location({ email }) {
           </div>
         </div>
       )}
+
+      {/* Remove-pal confirmation gate. Same modal kit as the header panels;
+          the backdrop and the X both cancel, and only the red button
+          actually un-links. */}
+      {removeTarget && (
+        <div
+          className="loc-modal-backdrop"
+          style={styles.modalBackdrop}
+          onClick={() => removingEmail !== removeTarget.email && setRemoveTarget(null)}
+        >
+          <div
+            className="loc-modal"
+            style={{ ...styles.modal, maxWidth: "380px" }}
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Confirm remove pal"
+          >
+            <div style={styles.modalHead}>
+              <h2 style={styles.modalTitle}>Remove pal</h2>
+              <button
+                type="button"
+                className="loc-modal-close"
+                style={styles.modalClose}
+                aria-label="Close"
+                onClick={() => setRemoveTarget(null)}
+              >
+                <FiX size={18} />
+              </button>
+            </div>
+            <p style={styles.modalHint}>
+              {(`${removeTarget.name} ${removeTarget.surname}`.trim()) || removeTarget.email}
+              {" "}will stop receiving your alerts and location, and you will lose
+              theirs. Only a new invite can undo this.
+            </p>
+            <div style={styles.confirmBtns}>
+              <button
+                type="button"
+                className="loc-invite-reject"
+                disabled={removingEmail === removeTarget.email}
+                onClick={() => setRemoveTarget(null)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                style={styles.removeConfirmBtn}
+                disabled={removingEmail === removeTarget.email}
+                onClick={confirmRemovePal}
+              >
+                {removingEmail === removeTarget.email ? "Removing…" : "Remove"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -818,10 +861,30 @@ const styles = {
     padding: "5px 10px",
     fontSize: "12px",
     fontFamily: "inherit",
+    background: "transparent",
+    color: "#8a8a8a",
     border: "1px solid #e0e0e0",
     borderRadius: 999,
     cursor: "pointer",
     transition: "background 0.15s ease, color 0.15s ease, border-color 0.15s ease"
+  },
+  // Footer row of the remove-pal confirm dialog
+  confirmBtns: {
+    display: "flex",
+    justifyContent: "flex-end",
+    gap: "10px",
+    marginTop: "16px"
+  },
+  removeConfirmBtn: {
+    padding: "8px 16px",
+    fontSize: "14px",
+    fontWeight: 600,
+    fontFamily: "inherit",
+    background: "#dc2626",
+    color: "#fff",
+    border: "none",
+    borderRadius: "10px",
+    cursor: "pointer"
   },
   palCardIdentity: {
     minWidth: 0 // lets a long name ellipsis inside the flex row
