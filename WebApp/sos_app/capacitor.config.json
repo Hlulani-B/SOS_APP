@@ -1,5 +1,10 @@
 {
   "appId": "com.mysos.weather",
   "appName": "Weather App",
-  "webDir": "dist"
+  "webDir": "dist",
+  "plugins": {
+    "FirebaseAuthentication": {
+      "providers": ["google.com"]
+    }
+  }
 }
