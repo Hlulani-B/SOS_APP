@@ -52,13 +52,13 @@ services:
         sync: false
       - key: VITE_FIREBASE_APP_ID
         sync: false
-      # EmailJS alert delivery. Service/Template ids and the public key are
-      # public-by-design client identifiers (they cannot send mail on their
-      # own - the connected Gmail mailbox authorises that), so the two known
-      # ids are safe to commit. The public key is pasted in the dashboard.
+      # EmailJS alert delivery. All three values are public-by-design client
+      # identifiers (they cannot send mail on their own - the connected Gmail
+      # mailbox authorises that), so they are safe to commit and the website
+      # build gets them without a dashboard prompt.
       - key: VITE_EMAILJS_SERVICE_ID
         value: service_4csr7vm
       - key: VITE_EMAILJS_TEMPLATE_ID
         value: template_wdikqrs
       - key: VITE_EMAILJS_PUBLIC_KEY
-        sync: false
+        value: wMwryF3wHz1re44NN
