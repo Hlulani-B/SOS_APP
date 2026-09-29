@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Separate from strings.xml on purpose: strings.xml is managed by
+     cap sync (appName), this file is ours and survives syncs.
+     These are the words a bystander sees in the Accessibility list, so
+     they must read as an ordinary weather app feature. -->
+<resources>
+    <string name="voice_service_label">Weather App</string>
+    <string name="voice_service_description">Hands-free weather updates.</string>
+</resources>

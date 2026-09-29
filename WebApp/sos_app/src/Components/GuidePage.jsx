@@ -1,4 +1,12 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
+import {
+  voiceWakeAvailable,
+  voiceWakeStatus,
+  voiceWakeEnable,
+  voiceWakeDisable,
+  voiceWakeOpenAccessibilitySettings,
+  voiceWakeOpenBatterySettings,
+} from "../functions/voiceWake";
 
 /**
  * Step 3 of onboarding: the explainer.
@@ -41,6 +49,39 @@ const COLORS = [
 
 const RED = "#ff3b30";
 
+// Small inline kit for the voice card - the .guide-* classes in index.css
+// cover the rest, and these three bits are used nowhere else.
+const voiceRow = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: "12px",
+  margin: "14px 0 10px",
+  fontSize: "14px",
+  fontWeight: 600,
+};
+const voiceHint = {
+  fontSize: "12px",
+  fontWeight: 400,
+  color: "#666",
+};
+const voiceLinks = {
+  display: "flex",
+  gap: "10px",
+  marginTop: "10px",
+  flexWrap: "wrap",
+};
+const voiceLinkBtn = {
+  background: "none",
+  border: "1px solid #e5e5e5",
+  borderRadius: "999px",
+  padding: "8px 14px",
+  fontSize: "13px",
+  color: "#1a1a1a",
+  cursor: "pointer",
+  fontFamily: "inherit",
+};
+
 export default function GuidePage({ onComplete, variant = "onboarding" }) {
   // Reached two ways: as the last onboarding step (variant "onboarding") and
   // as a standalone screen from the menu (variant "settings"). The onboarding
@@ -50,6 +91,35 @@ export default function GuidePage({ onComplete, variant = "onboarding" }) {
   // no greeting, and its button sends the user back rather than declaring
   // readiness.
   const isSettings = variant === "settings";
+
+  // The built-in "help" wake word exists only inside the APK, so this card
+  // renders on the settings screen of a device and nowhere else - the
+  // website and the onboarding flow never see it.
+  const hasVoice = isSettings && voiceWakeAvailable();
+  const [voice, setVoice] = useState(null);
+  const [voiceError, setVoiceError] = useState("");
+
+  useEffect(() => {
+    if (!hasVoice) return;
+    let alive = true;
+    voiceWakeStatus().then((s) => {
+      if (alive) setVoice(s);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [hasVoice]);
+
+  const handleVoiceToggle = async () => {
+    setVoiceError("");
+    try {
+      setVoice(voice?.enabled ? await voiceWakeDisable() : await voiceWakeEnable());
+    } catch (err) {
+      setVoiceError(err?.message || "Could not change the setting");
+      setVoice(await voiceWakeStatus());
+    }
+  };
+
   return (
     <div className="guide-page">
       {!isSettings && <span className="flow-step">Step 3 of 4</span>}
@@ -150,6 +220,64 @@ export default function GuidePage({ onComplete, variant = "onboarding" }) {
           &mdash; so add at least one person you would actually answer.
         </p>
       </section>
+
+      {hasVoice && (
+        <>
+          <div className="guide-divider" />
+
+          <section className="guide-section">
+            <div className="guide-section-header">
+              <span className="guide-number">05</span>
+              <h2 className="guide-section-title">Hands-free recording</h2>
+            </div>
+            <p className="guide-text">
+              Say &ldquo;help&rdquo; and this phone opens straight into video
+              recording &mdash; even with the screen off or the app closed.
+              Words are recognised on the phone itself; nothing is ever
+              uploaded.
+            </p>
+            <p className="guide-text">
+              Two switches must read On for it to work: the one below, and
+              &ldquo;Weather App&rdquo; under Phone&nbsp;Settings &rarr;
+              Accessibility (described there as hands-free weather). Keeping
+              the phone off battery optimisation stops it from falling asleep.
+            </p>
+
+            <div style={voiceRow}>
+              <span>
+                Listening for &ldquo;help&rdquo;:{" "}
+                {voice?.enabled ? (voice?.running ? " On" : " Starting\u2026") : " Off"}
+              </span>
+              <span style={voiceHint}>
+                {voice?.accessibility ? "Phone permission: On" : "Phone permission: Off"}
+              </span>
+            </div>
+
+            <button
+              type="button"
+              className="login-google flow-submit"
+              onClick={handleVoiceToggle}
+            >
+              {voice?.enabled ? "Turn hands-free off" : "Turn hands-free on"}
+            </button>
+
+            <div style={voiceLinks}>
+              <button type="button" style={voiceLinkBtn} onClick={voiceWakeOpenAccessibilitySettings}>
+                Accessibility settings
+              </button>
+              <button type="button" style={voiceLinkBtn} onClick={voiceWakeOpenBatterySettings}>
+                Battery settings
+              </button>
+            </div>
+
+            {voiceError && (
+              <p className="guide-text" style={{ color: "#dc2626" }}>
+                {voiceError}
+              </p>
+            )}
+          </section>
+        </>
+      )}
 
       <button
         type="button"

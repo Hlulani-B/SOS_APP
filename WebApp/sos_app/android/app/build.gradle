@@ -22,6 +22,14 @@ android {
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
     }
+    sourceSets {
+        main {
+            // Vosk wake model is fetched at build time into build/vosk-assets
+            // (see downloadVoskModel below) and merged into the APK assets.
+            // It is never committed to git.
+            assets.srcDirs += ["$buildDir/vosk-assets"]
+        }
+    }
 }
 
 repositories {
@@ -40,7 +48,55 @@ dependencies {
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
     androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
     implementation project(':capacitor-cordova-android-plugins')
+
+    // Vosk offline speech recognition (Apache-2.0, no API key) - powers the
+    // "help" wake word entirely on-device. The desktop JNA jar is replaced by
+    // the @aar variant because that is the one carrying the Android .so libs.
+    implementation('com.alphacephei:vosk-android:0.3.47') {
+        exclude group: 'net.java.dev.jna', module: 'jna'
+    }
+    implementation 'net.java.dev.jna:jna:5.13.0@aar'
 }
+
+// One ~40MB English model is downloaded straight from alphacephei.com on the
+// first build after a clean; Gradle's up-to-date check skips it afterwards.
+def voskModelDir = new File(buildDir, 'vosk-assets/vosk-model-en')
+tasks.register('downloadVoskModel') {
+    outputs.dir(voskModelDir)
+    doLast {
+        // NOTE: Gradle creates registered output dirs BEFORE doLast runs, so
+        // testing the directory itself would always "exist" and silently
+        // skip the download (this bit us once - the APK shipped without the
+        // model). Check a file that only exists in a complete extraction.
+        if (!new File(voskModelDir, 'am/final.mdl').exists()) {
+            // Staging lives OUTSIDE vosk-assets: everything under that dir
+            // is merged into the APK, and a stray 40MB zip there would ride
+            // along as an asset.
+            def staging = new File(buildDir, 'vosk-staging')
+            delete staging
+            staging.mkdirs()
+            def zipFile = new File(staging, 'model.zip')
+            logger.lifecycle('Downloading Vosk English model (~40MB)...')
+            new URL('https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip')
+                .openStream().withCloseable { ins ->
+                    zipFile.withOutputStream { os ->
+                        byte[] buf = new byte[16384]
+                        int n
+                        while ((n = ins.read(buf)) > 0) os.write(buf, 0, n)
+                    }
+                }
+            ant.unzip(src: zipFile.absolutePath, dest: staging.absolutePath)
+            def extracted = new File(staging, 'vosk-model-small-en-us-0.15')
+            if (!new File(extracted, 'am/final.mdl').exists()) {
+                throw new IOException('Vosk model zip did not contain the expected files')
+            }
+            ant.move(todir: voskModelDir.absolutePath) {
+                fileset(dir: extracted.absolutePath)
+            }
+        }
+    }
+}
+tasks.named('preBuild') { dependsOn downloadVoskModel }
 
 apply from: 'capacitor.build.gradle'
 

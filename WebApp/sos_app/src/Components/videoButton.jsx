@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { videoDownload } from '../functions/videoDownload';
 import { videoSend } from '../functions/videoSend';
 import { pickRecorderMime } from '../functions/recorderFormats';
@@ -16,6 +16,7 @@ export function VideoRecorder({
   activeTextColor = '#ffffff',
   style = {},
   onPress,
+  apiRef,
   children
 }) {
   const [isRecording, setIsRecording] = useState(false);
@@ -43,8 +44,13 @@ export function VideoRecorder({
       // Low-res capture keeps the file small enough to always email
       // (~1MB per minute at these bitrates). The preview element below is
       // a hidden 1px element, so nothing shows on screen either way.
+      // facingMode=environment forces the REAR lens: the recording points
+      // at whatever is in front of the phone (propped, pocketed, bag) and
+      // the screen never has to face her. 'ideal' not 'exact' so devices
+      // with no rear camera still record instead of failing the alert.
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
+          facingMode: { ideal: "environment" },
           width: { ideal: 320 },
           height: { ideal: 240 },
           frameRate: { ideal: 15 }
@@ -136,6 +142,19 @@ export function VideoRecorder({
       startingRef.current = false;
     });
   };
+
+  // Non-tap triggers (the "help" wake word) drive this exact pipeline
+  // through a shared ref. Assigned in an effect that re-runs every render,
+  // so the closure always sees the current isRecording/startingRef state;
+  // the button itself is untouched.
+  useEffect(() => {
+    if (!apiRef) return undefined;
+    apiRef.current = {
+      toggle: handleClick,
+      isRecording: () => isRecording || startingRef.current
+    };
+    return () => { apiRef.current = null; };
+  });
 
   return (
     <div style={{ position: 'relative', display: 'inline-block', ...style.wrapper }}>
