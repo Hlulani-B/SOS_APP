@@ -64,6 +64,12 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- Required for the Johannesburg video recorder (and the "help" wake ->
+         record flow). getUserMedia({video}) in the Capacitor WebView is denied
+         outright unless CAMERA is declared here, which is why video recording
+         silently failed on-device while it worked in the browser. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
