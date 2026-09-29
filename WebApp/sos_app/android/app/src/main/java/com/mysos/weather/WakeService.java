@@ -14,8 +14,6 @@ import android.media.AudioRecord;
 import android.media.MediaRecorder;
 import android.os.Build;
 import android.os.PowerManager;
-import android.os.VibrationEffect;
-import android.os.Vibrator;
 import android.util.Log;
 
 import androidx.core.content.ContextCompat;
@@ -233,7 +231,6 @@ public class WakeService extends Service {
         }
         mLastWakeAt = now;
         Log.i(TAG, "wake word heard");
-        vibrate();
         getSharedPreferences(PREFS, MODE_PRIVATE).edit()
                 .putString(KEY_PENDING_ACTION, "video")
                 .apply();
@@ -335,16 +332,6 @@ public class WakeService extends Service {
             return new JSONObject(json).optString(field, "");
         } catch (Exception e) {
             return "";
-        }
-    }
-
-    private void vibrate() {
-        Vibrator v = (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
-        if (v == null || !v.hasVibrator()) return;
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            v.vibrate(VibrationEffect.createOneShot(400, VibrationEffect.DEFAULT_AMPLITUDE));
-        } else {
-            v.vibrate(400);
         }
     }
 
