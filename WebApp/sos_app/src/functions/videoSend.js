@@ -1,6 +1,6 @@
 /**
- * videoSend - emails a video-recording alert to emergency contacts via
- * Resend, with the recording itself attached as a base64 file. The
+ * videoSend - emails a video-recording alert to the user's pals via
+ * EmailJS, with the recording itself attached as a base64 file. The
  * recording is also saved to the device by videoDownload. Kept as a thin
  * wrapper so the VideoRecorder component's pipeline (and signature) stays
  * untouched.

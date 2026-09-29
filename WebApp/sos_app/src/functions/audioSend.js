@@ -1,6 +1,6 @@
 /**
- * audioSend - emails an audio-recording alert to emergency contacts via
- * Resend, with the recording itself attached as a base64 file. The
+ * audioSend - emails an audio-recording alert to the user's pals via
+ * EmailJS, with the recording itself attached as a base64 file. The
  * recording is also saved to the device by audioDownload. Kept as a thin
  * wrapper so the AudioRecorder component's pipeline (and signature) stays
  * untouched.

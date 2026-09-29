@@ -1,6 +1,6 @@
 /**
- * SOS Helper - emails SOS alerts with GPS location to emergency contacts
- * via Resend.
+ * SOS Helper - emails SOS alerts with GPS location to the user's pals
+ * via EmailJS.
  *
  * SOSsend(fallbackNumbers, onStatusUpdate) keeps its original signature so
  * SOSButton needs no changes. IMPORTANT: onStatusUpdate is a COMPLETION

@@ -1,42 +1,50 @@
 /**
  * sendAlert - shared email dispatcher for all three alert paths (SOS, audio,
- * video). The browser posts to /api/emails (same origin, so no CORS); the
- * Vite dev server proxies that to api.resend.com and attaches the API key
- * server-side, keeping the key out of the client bundle entirely.
+ * video) over EmailJS.
  *
- * Free-tier rules to remember (no custom domain):
- *   - the "from" address must be onboarding@resend.dev
- *   - delivery is ONLY to the email address you signed up to Resend with;
- *     any other recipient is rejected until you verify a domain
+ * Why EmailJS and not Resend: on Resend's free tier (no verified domain)
+ * delivery is restricted to the single account-holder address, so alerts
+ * could never actually reach other pals. EmailJS sends through a mailbox
+ * the user connects once (Gmail/Outlook/anything) to ANY recipient from
+ * the browser - its public key is designed to be client-side, so no server
+ * proxy hop is needed (Render serves this app statically; the old Vercel
+ * api/emails.js proxy never ran there anyway).
  *
- * The API key lives in sos/.env as RESEND_API_KEY (no VITE_ prefix on
- * purpose - it must never reach the browser). After pasting the key the
- * dev server must be restarted so the proxy picks it up.
+ * Setup (one time, in the EmailJS dashboard):
+ *   1. connect an email service (any mailbox you control)
+ *   2. create an email template with:
+ *        To         = {{to_email}}
+ *        Subject    = {{subject}}
+ *        message    = {{message}}   (plus an attachment variable {{attachment}}
+ *                                    enabled under the template's Attachments)
+ *   3. copy the three ids into .env as VITE_EMAILJS_SERVICE_ID,
+ *      VITE_EMAILJS_TEMPLATE_ID, VITE_EMAILJS_PUBLIC_KEY (see .env.example),
+ *      and set the same three on the Render service before deploying.
  *
  * Attachments: audioSend/videoSend pass the recording as base64 through the
- * third argument. Resend allows max 40MB of attachments AFTER base64
- * encoding - anything above MAX_ATTACHMENT_BYTES is dropped and explained
- * in the email body instead, because the alert itself must ALWAYS go out.
+ * third argument; it is rebuilt into a File for the SDK. Anything above
+ * MAX_ATTACHMENT_BYTES is dropped and explained in the email body instead,
+ * because the alert itself must ALWAYS go out.
  */
 
+import emailjs from '@emailjs/browser';
 import { get_pals } from './apiPals.js';
 
-const RESEND_ENDPOINT = "/api/emails";
-const ALERT_FROM = import.meta.env.VITE_ALERT_FROM_EMAIL || "Safe <onboarding@resend.dev>";
+const EMAILJS_SERVICE_ID = import.meta.env.VITE_EMAILJS_SERVICE_ID || "";
+const EMAILJS_TEMPLATE_ID = import.meta.env.VITE_EMAILJS_TEMPLATE_ID || "";
+const EMAILJS_PUBLIC_KEY = import.meta.env.VITE_EMAILJS_PUBLIC_KEY || "";
+const ALERT_FROM_NAME = import.meta.env.VITE_ALERT_FROM_NAME || "Weather App";
 
-// Sized for the strictest hop in the delivery path: Vercel serverless
-// functions cap request bodies at ~4.5MB (Resend itself allows 40MB, and
-// the dev proxy has no limit, so production is the constraint). Oversized
-// attachments are dropped with a note in the email body - the alert
-// itself always sends.
+// Kept below EmailJS's own request ceiling so a long recording degrades
+// gracefully (dropped with a note) instead of failing the whole alert.
 const MAX_ATTACHMENT_BYTES = 4 * 1024 * 1024;
 
-// Converts a Blob into a plain base64 string - the format Resend expects in
-// attachments[].content. Encodes the raw bytes directly instead of parsing a
-// data: URL: data URLs embed the blob's mime type, and a type like
-// "video/webm;codecs=vp8,opus" contains a comma BEFORE the base64 payload,
-// which corrupted the extracted string and made every video attachment an
-// unopenable file.
+// Converts a Blob into a plain base64 string - the interchange format the
+// alert wrappers (audioSend/videoSend) use. Encodes the raw bytes directly
+// instead of parsing a data: URL: data URLs embed the blob's mime type, and
+// a type like "video/webm;codecs=vp8,opus" contains a comma BEFORE the
+// base64 payload, which corrupted the extracted string and made every video
+// attachment an unopenable file.
 export function blobToBase64(blob) {
   return blob.arrayBuffer().then((buffer) => {
     const bytes = new Uint8Array(buffer);
@@ -51,26 +59,39 @@ export function blobToBase64(blob) {
   });
 }
 
-// Turns a raw Resend error body into a plain-English hint with the FIX
-function explainResendError(raw) {
-  let parsed = null;
-  try {
-    parsed = JSON.parse(raw);
-  } catch (e) {
-    return raw;
-  }
+// Rebuilds a File from the base64 content for the EmailJS SDK, which
+// expects an actual file object in the template variable, not a string.
+function base64ToFile(content, filename, mimeType) {
+  const binary = atob(content);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return new File([bytes], filename, { type: mimeType || "application/octet-stream" });
+}
+
+// Turns a raw EmailJS failure into a plain-English hint with the FIX
+function explainEmailJSError(raw) {
   const msg = String(
-    parsed.message || (parsed.error && parsed.error.message) || raw
+    (raw && (raw.text || raw.message)) || raw || "unknown error"
   );
 
-  // Free tier: recipient is not the address you signed up with
-  if (/own email|testing emails|trial mode/i.test(msg)) {
-    return `${msg} -> FIX: on the Resend free tier (no verified domain) you can only send to the email address you signed up with. Use that address as your test contact, or add and verify a domain in the Resend dashboard.`;
+  // Missing/mistyped public key
+  if (/invalid public key|public key/i.test(msg)) {
+    return `${msg} -> FIX: copy the key from EmailJS -> Accounts -> API Keys into .env as VITE_EMAILJS_PUBLIC_KEY and rebuild.`;
   }
 
-  // Missing/wrong API key
-  if (/invalid api key|unauthorized/i.test(msg)) {
-    return `${msg} -> FIX: paste your Resend API key (re_...) into sos/.env as RESEND_API_KEY and restart the dev server.`;
+  // Template variables not set up
+  if (/parameters are invalid|missing parameter|template/i.test(msg)) {
+    return `${msg} -> FIX: the EmailJS template must define To={{to_email}}, Subject={{subject}}, the body must contain {{message}}, and the attachment slot must use {{attachment}}.`;
+  }
+
+  // Monthly quota exhausted (free tier is 200 emails/month)
+  if (/quota|limit exceeded|too many/i.test(msg)) {
+    return `${msg} -> FIX: the EmailJS free tier allows 200 emails per month; check the dashboard usage ring.`;
+  }
+
+  // Service mailbox disconnected
+  if (/service|mailbox|authentication/i.test(msg) && !/parameters/i.test(msg)) {
+    return `${msg} -> FIX: reconnect the email service in the EmailJS dashboard (the connected mailbox password/OAuth went stale).`;
   }
 
   return msg;
@@ -84,6 +105,13 @@ export async function sendAlertEmail(subject, text, attachments = []) {
   const email = localStorage.getItem("sos_email");
   if (!email) {
     console.warn("sendAlertEmail: no signed-in email - cannot resolve recipients.");
+    return false;
+  }
+
+  if (!EMAILJS_SERVICE_ID || !EMAILJS_TEMPLATE_ID || !EMAILJS_PUBLIC_KEY) {
+    console.error(
+      "sendAlertEmail: EmailJS is not configured. Set VITE_EMAILJS_SERVICE_ID, VITE_EMAILJS_TEMPLATE_ID and VITE_EMAILJS_PUBLIC_KEY in .env (local) and on the Render service (production)."
+    );
     return false;
   }
 
@@ -108,9 +136,8 @@ export async function sendAlertEmail(subject, text, attachments = []) {
     return false;
   }
 
-  // "It must always send": if an attachment would break the request (Resend
-  // caps attachments at 40MB after base64), drop it and say so in the body
-  // instead of losing the whole alert.
+  // "It must always send": if an attachment would break the request, drop
+  // it and say so in the body instead of losing the whole alert.
   let finalText = text;
   let safeAttachments = [];
   if (attachments.length > 0) {
@@ -137,27 +164,22 @@ export async function sendAlertEmail(subject, text, attachments = []) {
   let sent = 0;
   for (const to of recipients) {
     try {
-      const response = await fetch(RESEND_ENDPOINT, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          from: ALERT_FROM,
-          to: [to],
-          subject,
-          text: finalText,
-          ...(safeAttachments.length > 0 ? { attachments: safeAttachments } : {})
-        })
-      });
-
-      if (response.ok) {
-        sent++;
-      } else {
-        console.error(`Failed to send to ${to}:`, explainResendError(await response.text()));
+      const params = {
+        to_email: to,
+        subject,
+        message: finalText,
+        from_name: ALERT_FROM_NAME
+      };
+      if (safeAttachments.length > 0) {
+        const first = safeAttachments[0];
+        params.attachment = base64ToFile(first.content, first.filename, first.content_type);
       }
+      await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, params, {
+        publicKey: EMAILJS_PUBLIC_KEY
+      });
+      sent++;
     } catch (error) {
-      console.error(`Error sending to ${to}:`, error);
+      console.error(`Failed to send to ${to}:`, explainEmailJSError(error));
     }
   }
 
