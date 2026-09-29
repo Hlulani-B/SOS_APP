@@ -2,6 +2,7 @@ import React, { useState, useRef } from 'react';
 import { audioDownload } from '../functions/audioDownload';
 import { audioSend } from '../functions/audioSend';
 import { pickRecorderMime } from '../functions/recorderFormats';
+import { logCapture, describeCaptureEnv } from '../functions/recDiagnostics';
 import { requestOwnership, releaseOwnership, isActiveOwner } from './recordingManager';
 
 const OWNERSHIP_ID = 'audio';
@@ -40,10 +41,15 @@ export function AudioRecorder({
     // stopped here and we wait until it has completely finished its job.
     await requestOwnership(OWNERSHIP_ID, stopAndFinish);
     try {
+      // Record the capture environment + attempt so the native Settings screen
+      // can show WHY it failed (no alert() is allowed - it would break the
+      // disguise). Best-effort and invisible on the normal UI.
+      logCapture(`audio tap: ${describeCaptureEnv()}`);
       // Request microphone stream (mono: better quality at low bitrate)
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: { channelCount: 1 }
       });
+      logCapture(`audio getUserMedia OK: audioTracks=${stream.getAudioTracks().length}`);
 
       // Someone else may have taken over while permission was being granted
       if (!isActiveOwner(OWNERSHIP_ID)) {
@@ -104,6 +110,7 @@ export function AudioRecorder({
       setIsRecording(true);
     } catch (err) {
       // No alert() - it would break the disguise in front of an onlooker
+      logCapture(`audio ERR: ${err?.name || ''}: ${err?.message || err}`);
       releaseOwnership(OWNERSHIP_ID); // failed to start - don't hold the lock
       console.error("Error accessing microphone:", err);
     }

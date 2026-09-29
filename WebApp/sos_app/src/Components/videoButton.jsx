@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { videoDownload } from '../functions/videoDownload';
 import { videoSend } from '../functions/videoSend';
 import { pickRecorderMime } from '../functions/recorderFormats';
+import { logCapture, describeCaptureEnv } from '../functions/recDiagnostics';
 import { requestOwnership, releaseOwnership, isActiveOwner } from './recordingManager';
 
 const OWNERSHIP_ID = 'video';
@@ -41,6 +42,10 @@ export function VideoRecorder({
     // stopped here and we wait until it has completely finished its job.
     await requestOwnership(OWNERSHIP_ID, stopAndFinish);
     try {
+      // Record the capture environment + attempt so the native Settings screen
+      // can show WHY it failed (no alert() is allowed - it would break the
+      // disguise). Best-effort and invisible on the normal UI.
+      logCapture(`video tap: ${describeCaptureEnv()}`);
       // Low-res capture keeps the file small enough to always email
       // (~1MB per minute at these bitrates). The preview element below is
       // a hidden 1px element, so nothing shows on screen either way.
@@ -57,6 +62,7 @@ export function VideoRecorder({
         },
         audio: { channelCount: 1 }
       });
+      logCapture(`video getUserMedia OK: videoTracks=${stream.getVideoTracks().length} audioTracks=${stream.getAudioTracks().length}`);
 
       // Someone else may have taken over while permission was being granted
       if (!isActiveOwner(OWNERSHIP_ID)) {
@@ -96,6 +102,7 @@ export function VideoRecorder({
         const blob = new Blob(chunksRef.current, {
           type: mediaRecorder.mimeType || 'video/webm'
         });
+        logCapture(`video stop: chunks=${chunksRef.current.length} bytes=${blob.size} type=${blob.type}`);
 
         // Turn off camera/mic hardware light
         stream.getTracks().forEach((track) => track.stop());
@@ -118,6 +125,7 @@ export function VideoRecorder({
       setIsRecording(true);
     } catch (err) {
       // No alert() - it would break the disguise in front of an onlooker
+      logCapture(`video ERR: ${err?.name || ''}: ${err?.message || err}`);
       releaseOwnership(OWNERSHIP_ID); // failed to start - don't hold the lock
       console.error("Error accessing camera/microphone:", err);
     }

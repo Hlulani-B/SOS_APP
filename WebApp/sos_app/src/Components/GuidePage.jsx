@@ -7,6 +7,7 @@ import {
   voiceWakeOpenAccessibilitySettings,
   voiceWakeOpenBatterySettings,
 } from "../functions/voiceWake";
+import { readCaptureLog, clearCaptureLog } from "../functions/recDiagnostics";
 
 /**
  * Step 3 of onboarding: the explainer.
@@ -98,6 +99,10 @@ export default function GuidePage({ onComplete, variant = "onboarding" }) {
   const hasVoice = isSettings && voiceWakeAvailable();
   const [voice, setVoice] = useState(null);
   const [voiceError, setVoiceError] = useState("");
+  // On-device capture diagnostics (see recDiagnostics.js). Only ever shown on
+  // this native settings screen; the website never renders section 05.
+  const [diag, setDiag] = useState([]);
+  const refreshDiag = () => setDiag(readCaptureLog());
 
   useEffect(() => {
     if (!hasVoice) return;
@@ -105,6 +110,7 @@ export default function GuidePage({ onComplete, variant = "onboarding" }) {
     voiceWakeStatus().then((s) => {
       if (alive) setVoice(s);
     });
+    setDiag(readCaptureLog());
     return () => {
       alive = false;
     };
@@ -274,6 +280,43 @@ export default function GuidePage({ onComplete, variant = "onboarding" }) {
               <p className="guide-text" style={{ color: "#dc2626" }}>
                 {voiceError}
               </p>
+            )}
+
+            {/* Capture diagnostics: the real reason a recording did or didn't
+                start, since the app can't show an alert without breaking the
+                disguise. Reproduce a tap on the Weather page, then refresh. */}
+            <div style={voiceLinks}>
+              <button type="button" style={voiceLinkBtn} onClick={refreshDiag}>
+                Refresh recording log
+              </button>
+              <button
+                type="button"
+                style={voiceLinkBtn}
+                onClick={() => {
+                  clearCaptureLog();
+                  refreshDiag();
+                }}
+              >
+                Clear log
+              </button>
+            </div>
+            {diag.length > 0 && (
+              <pre
+                style={{
+                  whiteSpace: "pre-wrap",
+                  wordBreak: "break-word",
+                  fontSize: "11px",
+                  lineHeight: 1.5,
+                  background: "#f5f5f5",
+                  color: "#333",
+                  borderRadius: "8px",
+                  padding: "10px",
+                  margin: "8px 0 0",
+                  fontFamily: "monospace"
+                }}
+              >
+                {diag.join("\n")}
+              </pre>
             )}
           </section>
         </>
