@@ -72,6 +72,13 @@
          fail with NotAllowedError - the video recorder also captures a mic
          track, so it hit the same wall. -->
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <!-- @capacitor/geolocation's own manifest is EMPTY: it requests ACCESS_*
+         LOCATION at runtime but does NOT declare them, so the app must. With
+         none declared the WebView cannot get a fix and every alert email
+         collapses to "Location unavailable" (getMapsLink -> getPosition).
+         FINE for the GPS map link, COARSE as the network fallback. -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <!-- Required for the Johannesburg video recorder (and the "help" wake ->
          record flow). getUserMedia({video}) in the Capacitor WebView is denied
          outright unless CAMERA is declared here, which is why video recording
