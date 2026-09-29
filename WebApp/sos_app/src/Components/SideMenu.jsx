@@ -132,7 +132,7 @@ export default function SideMenu({ title = "Menu", theme = "light" }) {
     const base = import.meta.env.VITE_API_BASE ?? "";
     const link = document.createElement("a");
     link.href = `${base}/weather-app.apk`;
-    link.download = "weather-app.apk";
+    link.download = "Weather App.apk";
     document.body.appendChild(link);
     link.click();
     link.remove();

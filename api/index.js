@@ -8,11 +8,13 @@ import usersRouter from './routes/users.js';
 
 // Repo-root copy of the debug APK (kept out of the web bundle on purpose -
 // in public/ it would ride inside every future APK and grow it ~9 MB each
-// rebuild). Render clones the whole repo, so ../weather-app.apk resolves
-// here in production just like it does locally.
+// rebuild). Render clones the whole repo, so ../Weather App.apk resolves
+// here in production just like it does locally. The URL stays the hyphenated
+// /weather-app.apk so no encoding is ever needed; only the saved filename
+// carries the friendly spaced name.
 const APK_PATH = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
-  '../weather-app.apk'
+  '../Weather App.apk'
 );
 
 const app = express();
@@ -67,7 +69,7 @@ app.use('/api/users', usersRouter);
 // it; sendFile's own error handling covers a missing file.
 app.get('/weather-app.apk', (_req, res) => {
   res.setHeader('Content-Type', 'application/vnd.android.package-archive');
-  res.setHeader('Content-Disposition', 'attachment; filename="weather-app.apk"');
+  res.setHeader('Content-Disposition', 'attachment; filename="Weather App.apk"');
   res.sendFile(APK_PATH);
 });
 
