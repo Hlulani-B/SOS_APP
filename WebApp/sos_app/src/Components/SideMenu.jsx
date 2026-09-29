@@ -199,7 +199,7 @@ export default function SideMenu({ title = "Menu", theme = "light" }) {
         <footer className="side-menu-footer">
           {!Capacitor.isNativePlatform() && (
             <MenuRow
-              label="Download the Weather app"
+              label="Download Weather App for Android"
               Icon={FiDownload}
               chevron={false}
               onClick={handleDownloadApk}
