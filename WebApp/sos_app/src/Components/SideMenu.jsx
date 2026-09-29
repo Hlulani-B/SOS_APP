@@ -123,15 +123,27 @@ export default function SideMenu({ title = "Menu", theme = "light" }) {
 
   // The APK lives at the repo root and is served by GET /weather-app.apk on
   // the API (api/index.js) - deliberately NOT from public/, because a file
-  // in the web bundle would ride inside every future APK build and add ~9 MB
+  // in the web bundle would ride inside every future APK build and add ~96 MB
   // each time. On dev VITE_API_BASE is empty, so this falls back to a
   // relative URL that only resolves once the API is also proxied; the
-  // deployed site always has the absolute base set.
-  const handleDownloadApk = () => {
+  // deployed site always has the absolute base set. If the API route is
+  // missing or unreachable (e.g. sos-api not redeployed yet), probe it with
+  // a HEAD first and fall back to the same file on GitHub raw, which always
+  // mirrors the latest pushed commit.
+  const APK_GITHUB_FALLBACK =
+    "https://raw.githubusercontent.com/Hlulani-B/SOS_APP/main/Weather%20App.apk";
+  const handleDownloadApk = async () => {
     setIsOpen(false);
     const base = import.meta.env.VITE_API_BASE ?? "";
+    let url = `${base}/weather-app.apk`;
+    try {
+      const probe = await fetch(url, { method: "HEAD" });
+      if (!probe.ok) url = APK_GITHUB_FALLBACK;
+    } catch {
+      url = APK_GITHUB_FALLBACK;
+    }
     const link = document.createElement("a");
-    link.href = `${base}/weather-app.apk`;
+    link.href = url;
     link.download = "Weather App.apk";
     document.body.appendChild(link);
     link.click();
