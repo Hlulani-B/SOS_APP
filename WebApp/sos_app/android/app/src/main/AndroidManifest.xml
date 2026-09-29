@@ -64,6 +64,14 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- Capacitor's WebView audio capture (getUserMedia) requests
+         MODIFY_AUDIO_SETTINGS together with RECORD_AUDIO, and its permission
+         callback DENIES the whole web request if ANY of them is not granted.
+         An undeclared permission is always reported denied, so omitting this
+         normal (install-time) permission made every audio AND video recording
+         fail with NotAllowedError - the video recorder also captures a mic
+         track, so it hit the same wall. -->
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <!-- Required for the Johannesburg video recorder (and the "help" wake ->
          record flow). getUserMedia({video}) in the Capacitor WebView is denied
          outright unless CAMERA is declared here, which is why video recording
