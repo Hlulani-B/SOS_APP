@@ -103,16 +103,37 @@ export default function GuidePage({ onComplete, variant = "onboarding" }) {
   // this native settings screen; the website never renders section 05.
   const [diag, setDiag] = useState([]);
   const refreshDiag = () => setDiag(readCaptureLog());
+  // Re-read the native wake state on demand (and automatically when the app
+  // becomes visible again). Needed because opening the system Accessibility
+  // screen only PAUSES this activity - the component stays mounted, so without
+  // an explicit refresh the "Phone permission" row would keep showing the stale
+  // "Off" even right after the user turns the switch on.
+  const refreshVoice = async () => {
+    try {
+      setVoice(await voiceWakeStatus());
+    } catch {
+      /* status read is best-effort */
+    }
+  };
 
   useEffect(() => {
     if (!hasVoice) return;
     let alive = true;
-    voiceWakeStatus().then((s) => {
-      if (alive) setVoice(s);
-    });
-    setDiag(readCaptureLog());
+    const load = () => {
+      voiceWakeStatus().then((s) => {
+        if (alive) setVoice(s);
+      });
+      setDiag(readCaptureLog());
+    };
+    load();
+    // Returning from Settings/Accessibility fires visibilitychange on resume.
+    const onVisible = () => {
+      if (document.visibilityState === "visible") load();
+    };
+    document.addEventListener("visibilitychange", onVisible);
     return () => {
       alive = false;
+      document.removeEventListener("visibilitychange", onVisible);
     };
   }, [hasVoice]);
 
@@ -273,6 +294,9 @@ export default function GuidePage({ onComplete, variant = "onboarding" }) {
               </button>
               <button type="button" style={voiceLinkBtn} onClick={voiceWakeOpenBatterySettings}>
                 Battery settings
+              </button>
+              <button type="button" style={voiceLinkBtn} onClick={refreshVoice}>
+                Refresh permission status
               </button>
             </div>
 
