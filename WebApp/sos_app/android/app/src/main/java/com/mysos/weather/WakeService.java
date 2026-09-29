@@ -56,7 +56,16 @@ public class WakeService extends Service {
 
     private static final String TAG = "WakeService";
     private static final String CHANNEL_ID = "weather";
+    // Separate HIGH-importance channel used only as a fallback: when the
+    // accessibility exemption isn't on, a background startActivity is silently
+    // refused, so we surface a tappable heads-up notification instead.
+    private static final String ALERT_CHANNEL_ID = "weather_alert";
     private static final int NOTIFICATION_ID = 7301;
+    // One spoken word streams through many 100ms chunks and the trailing audio
+    // keeps matching "help"; without this window a single utterance fires a
+    // dozen wakes (endless vibration + launch spam). 4s is a spoken-word-safe
+    // gap that still allows a deliberate second try.
+    private static final long WAKE_COOLDOWN_MS = 4000;
     private static final int SAMPLE_RATE = 16000;
     // 100ms slices - responsive enough for a wake word, cheap on CPU.
     private static final int CHUNK_SAMPLES = SAMPLE_RATE / 10;
@@ -68,6 +77,7 @@ public class WakeService extends Service {
     private static volatile boolean sPaused = false;
 
     private volatile boolean mLoopAlive = false;
+    private volatile long mLastWakeAt = 0;
     private Thread mListenerThread;
     private PowerManager.WakeLock mWakeLock;
 
@@ -84,6 +94,7 @@ public class WakeService extends Service {
         super.onCreate();
         sRunning = true;
         createChannel();
+        createAlertChannel();
         // startForeground with no explicit type inherits microphone from the
         // manifest, which is the exemption that keeps the mic alive here.
         startForeground(NOTIFICATION_ID, buildNotification());
@@ -213,6 +224,14 @@ public class WakeService extends Service {
     }
 
     private void onWakeWord(Recognizer recognizer) {
+        long now = System.currentTimeMillis();
+        if (now - mLastWakeAt < WAKE_COOLDOWN_MS) {
+            // Inside the debounce window: drop the buffered audio so the tail
+            // of the same word stops matching, but do NOT re-fire.
+            recognizer.reset();
+            return;
+        }
+        mLastWakeAt = now;
         Log.i(TAG, "wake word heard");
         vibrate();
         getSharedPreferences(PREFS, MODE_PRIVATE).edit()
@@ -223,12 +242,52 @@ public class WakeService extends Service {
         // which is the whole reason that no-op service exists.
         Intent launch = new Intent(this, MainActivity.class)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        boolean launched = false;
         try {
             startActivity(launch);
+            launched = true;
         } catch (Exception e) {
             Log.e(TAG, "launch blocked on this OEM", e);
         }
+        // No accessibility exemption (or an OEM that still refuses BAL): the
+        // direct launch was refused, so fall back to a heads-up notification
+        // the user can tap. The wake is never a silent dead end.
+        if (!launched) {
+            showWakeNotification();
+        }
         recognizer.reset();
+    }
+
+    /** Heads-up "Weather" notification that opens the app on tap. */
+    private void showWakeNotification() {
+        Intent open = new Intent(this, MainActivity.class)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        int piFlags = Build.VERSION.SDK_INT >= 23 ? PendingIntent.FLAG_IMMUTABLE : 0;
+        PendingIntent pi = PendingIntent.getActivity(this, 1, open, piFlags);
+        Notification.Builder b = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
+                ? new Notification.Builder(this, ALERT_CHANNEL_ID)
+                : new Notification.Builder(this);
+        Notification n = b.setContentTitle("Weather")
+                .setContentText("Tap to check the forecast")
+                .setSmallIcon(android.R.drawable.ic_popup_sync)
+                .setAutoCancel(true)
+                .setContentIntent(pi)
+                .build();
+        NotificationManager nm = getSystemService(NotificationManager.class);
+        if (nm != null) nm.notify(NOTIFICATION_ID + 1, n);
+    }
+
+    private void createAlertChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            NotificationManager nm = getSystemService(NotificationManager.class);
+            if (nm != null && nm.getNotificationChannel(ALERT_CHANNEL_ID) == null) {
+                NotificationChannel ch = new NotificationChannel(
+                        ALERT_CHANNEL_ID, "Weather alerts",
+                        NotificationManager.IMPORTANCE_HIGH);
+                ch.setShowBadge(false);
+                nm.createNotificationChannel(ch);
+            }
+        }
     }
 
     // ----------------------------------------------------------------- utils
