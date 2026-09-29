@@ -38,7 +38,7 @@ export default function LiveLocation({ width, height, email }) {
         opacity: !email ? 0.5 : 1,
       }}
     >
-      {share ? "Turn off location" : "Turn on location"}
+      {share ? "Stop sharing weather" : "Share weather"}
     </button>
   );
 }
