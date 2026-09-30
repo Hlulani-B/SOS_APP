@@ -14,6 +14,8 @@ import android.media.AudioRecord;
 import android.media.MediaRecorder;
 import android.os.Build;
 import android.os.PowerManager;
+import android.os.VibrationEffect;
+import android.os.Vibrator;
 import android.util.Log;
 
 import androidx.core.content.ContextCompat;
@@ -231,6 +233,12 @@ public class WakeService extends Service {
         }
         mLastWakeAt = now;
         Log.i(TAG, "wake word heard");
+        // Tactile feedback so the user knows the word was caught (important
+        // for a demo - the judges can see the phone respond physically).
+        try {
+            Vibrator v = (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
+            if (v != null) v.vibrate(VibrationEffect.createOneShot(300, VibrationEffect.DEFAULT_AMPLITUDE));
+        } catch (Exception ignored) { /* vibrator unavailable */ }
         getSharedPreferences(PREFS, MODE_PRIVATE).edit()
                 .putString(KEY_PENDING_ACTION, "video")
                 .apply();
