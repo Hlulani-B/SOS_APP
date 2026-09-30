@@ -35,7 +35,8 @@ export async function audioSend(blob, userEmail = "user@example.com") {
           {
             filename: `emergency-audio-${Date.now()}.${ext}`,
             content,
-            content_type: (blob.type || "audio/webm").split(";")[0]
+            content_type: (blob.type || "audio/webm").split(";")[0],
+            blob  // original Blob kept for catbox upload when base64 exceeds EmailJS 50KB limit
           }
         ];
         console.log(`Audio recording attached (${(blob.size / 1024).toFixed(0)}KB, ${ext})`);

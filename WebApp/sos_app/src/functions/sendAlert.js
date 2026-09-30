@@ -31,8 +31,9 @@ const ALERT_FROM_NAME = import.meta.env.VITE_ALERT_FROM_NAME || "Weather App";
 // EmailJS's free plan caps ALL template variables (message + attachment +
 // subject + to_email + from_name) at 50 KB combined. The base64 attachment
 // dominates, so we keep it under ~35 KB to leave headroom for the other
-// fields (~1 KB). Anything above this is dropped with a note in the body
-// instead of failing the whole alert with a 413.
+// fields (~1 KB). Anything above this is uploaded to catbox.moe and the
+// email carries a download link instead, so the evidence still gets off
+// the device even if it is later destroyed.
 const MAX_ATTACHMENT_BYTES = 35 * 1024;
 
 // Converts a Blob into a plain base64 string, the interchange format the
@@ -58,6 +59,36 @@ export function blobToBase64(blob) {
 // attachment would silently vanish. It expects a base64 data URL string.
 function base64ToDataUrl(content, mimeType) {
   return `data:${mimeType || "application/octet-stream"};base64,${content}`;
+}
+
+// Uploads a Blob to catbox.moe (free file hosting, no auth, files kept for
+// at least 30 days). Returns the download URL on success, or null when the
+// upload fails (CORS block, network error, etc.) so the caller can fall
+// back to the direct-attachment path or a "saved on device" note.
+export async function uploadRecording(blob) {
+  try {
+    const formData = new FormData();
+    formData.append("reqtype", "fileupload");
+    formData.append("fileToUpload", blob, `evidence-${Date.now()}.webm`);
+    const resp = await fetch("https://catbox.moe/user/api.php", {
+      method: "POST",
+      body: formData
+    });
+    if (!resp.ok) {
+      console.warn(`catbox upload HTTP ${resp.status}`);
+      return null;
+    }
+    const url = (await resp.text()).trim();
+    if (url.startsWith("https://")) {
+      console.log(`Recording uploaded to catbox (${(blob.size / 1024).toFixed(0)}KB): ${url}`);
+      return url;
+    }
+    console.warn("catbox returned unexpected response:", url);
+    return null;
+  } catch (err) {
+    console.warn("catbox upload failed:", err.message || err);
+    return null;
+  }
 }
 
 // Turns a raw EmailJS failure into readable text with a hint on the fix.
@@ -134,16 +165,21 @@ export async function sendAlertEmail(subject, text, attachments = []) {
     return false;
   }
 
-  // "It must always send": if an attachment would break the request, drop
-  // it and say so in the body instead of losing the whole alert.
+  // "It must always send": the recording must get off the device because
+  // if the device is destroyed the evidence is lost. Three tiers:
+  //   1. Small enough for EmailJS (≤35 KB base64) → direct attachment
+  //   2. Too large → upload to catbox.moe, email carries download link
+  //   3. Upload fails → alert text still sends, recording saved on device
   let finalText = text;
   let safeAttachments = [];
+  let recordingUrl = null;
   if (attachments.length > 0) {
     const totalBytes = attachments.reduce(
       (sum, a) => sum + String(a.content || "").length,
       0
     );
     if (totalBytes <= MAX_ATTACHMENT_BYTES) {
+      // Tier 1: fits inside EmailJS variables directly
       safeAttachments = attachments.map((a) => ({
         filename: a.filename,
         content: a.content,
@@ -151,11 +187,20 @@ export async function sendAlertEmail(subject, text, attachments = []) {
       }));
       finalText += "\n\nThe recording is attached to this email.";
     } else {
+      // Tier 2: too large for EmailJS - upload to catbox for a download link
       console.warn(
-        `Attachment too large to email (${(totalBytes / 1024 / 1024).toFixed(1)}MB base64), sending the alert without it.`
+        `Attachment too large for EmailJS (${(totalBytes / 1024).toFixed(0)}KB base64, limit ${MAX_ATTACHMENT_BYTES / 1024}KB). Uploading to file host...`
       );
-      finalText +=
-        "\n\nThe recording was too large to attach to this email; it has been saved on the device.";
+      if (attachments[0].blob) {
+        recordingUrl = await uploadRecording(attachments[0].blob);
+      }
+      if (recordingUrl) {
+        finalText += `\n\nRecording (${(totalBytes / 1024).toFixed(0)}KB): ${recordingUrl}`;
+      } else {
+        // Tier 3: upload failed - at least the alert text still goes out
+        finalText +=
+          "\n\nThe recording was too large to email and could not be uploaded; it has been saved on the device.";
+      }
     }
   }
 
