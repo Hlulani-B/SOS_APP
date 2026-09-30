@@ -29,6 +29,9 @@ app.use(cors());
 
 app.use(express.json());
 
+// Accept raw binary bodies up to 50MB for the upload proxy
+app.use('/api/upload', express.raw({ type: 'application/octet-stream', limit: '50mb' }));
+
 app.get('/', (_req, res) => {
   res.json({
     ok: true,
@@ -56,6 +59,7 @@ app.get('/', (_req, res) => {
         'setAvatar',
       ],
       'GET /weather-app.apk': 'debug APK download (attachment)',
+      'POST /api/upload': 'file upload proxy (catbox.moe)',
     },
   });
 });
@@ -63,6 +67,36 @@ app.get('/', (_req, res) => {
 app.use('/api/location', locationRouter);
 app.use('/api/pals', palsRouter);
 app.use('/api/users', usersRouter);
+
+// Upload proxy: browsers can't POST to catbox.moe directly (CORS blocked),
+// so the web app sends the raw file here and this endpoint forwards it
+// server-to-server where CORS is not a factor. Returns the catbox URL.
+app.post('/api/upload', async (req, res) => {
+  try {
+    if (!req.body || req.body.length === 0) {
+      return res.status(400).json({ ok: false, error: 'empty body' });
+    }
+    const filename = req.query.filename || `evidence-${Date.now()}.webm`;
+    const formData = new FormData();
+    formData.append('reqtype', 'fileupload');
+    formData.append('fileToUpload', new Blob([req.body]), filename);
+    const resp = await fetch('https://catbox.moe/user/api.php', {
+      method: 'POST',
+      body: formData,
+    });
+    if (!resp.ok) {
+      return res.status(resp.status).json({ ok: false, error: `catbox HTTP ${resp.status}` });
+    }
+    const url = (await resp.text()).trim();
+    if (url.startsWith('https://')) {
+      res.json({ ok: true, url });
+    } else {
+      res.status(502).json({ ok: false, error: 'catbox returned unexpected response' });
+    }
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
 
 // Serves the APK for the site's "Download the Weather app" button. The
 // attachment disposition makes browsers save it instead of trying to render

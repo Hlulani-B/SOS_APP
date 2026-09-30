@@ -61,32 +61,33 @@ function base64ToDataUrl(content, mimeType) {
   return `data:${mimeType || "application/octet-stream"};base64,${content}`;
 }
 
-// Uploads a Blob to catbox.moe (free file hosting, no auth, files kept for
-// at least 30 days). Returns the download URL on success, or null when the
-// upload fails (CORS block, network error, etc.) so the caller can fall
-// back to the direct-attachment path or a "saved on device" note.
+// Uploads a Blob via the API proxy (which forwards to catbox.moe server-to-
+// server, bypassing browser CORS restrictions). Returns the download URL on
+// success, or null when the upload fails so the caller can fall back to the
+// direct-attachment path or a "saved on device" note.
+const API_BASE = import.meta.env.VITE_API_BASE ?? "";
+
 export async function uploadRecording(blob) {
   try {
-    const formData = new FormData();
-    formData.append("reqtype", "fileupload");
-    formData.append("fileToUpload", blob, `evidence-${Date.now()}.webm`);
-    const resp = await fetch("https://catbox.moe/user/api.php", {
+    const filename = `evidence-${Date.now()}.webm`;
+    const resp = await fetch(`${API_BASE}/api/upload?filename=${encodeURIComponent(filename)}`, {
       method: "POST",
-      body: formData
+      headers: { "Content-Type": "application/octet-stream" },
+      body: await blob.arrayBuffer()
     });
     if (!resp.ok) {
-      console.warn(`catbox upload HTTP ${resp.status}`);
+      console.warn(`upload proxy HTTP ${resp.status}`);
       return null;
     }
-    const url = (await resp.text()).trim();
-    if (url.startsWith("https://")) {
-      console.log(`Recording uploaded to catbox (${(blob.size / 1024).toFixed(0)}KB): ${url}`);
-      return url;
+    const json = await resp.json();
+    if (json.ok && json.url && json.url.startsWith("https://")) {
+      console.log(`Recording uploaded (${(blob.size / 1024).toFixed(0)}KB): ${json.url}`);
+      return json.url;
     }
-    console.warn("catbox returned unexpected response:", url);
+    console.warn("upload proxy returned unexpected response:", json);
     return null;
   } catch (err) {
-    console.warn("catbox upload failed:", err.message || err);
+    console.warn("upload failed:", err.message || err);
     return null;
   }
 }
