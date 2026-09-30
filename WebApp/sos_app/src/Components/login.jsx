@@ -3,7 +3,7 @@ import { signInWithPopup, signInWithRedirect, onAuthStateChanged } from "firebas
 import { Capacitor } from "@capacitor/core";
 import { FirebaseAuthentication } from "@capacitor-firebase/authentication";
 import { auth, googleProvider } from "../firebase.js";
-import { Checkuser } from "../functions/apiUsers.js";
+import { Checkuser, getFullName } from "../functions/apiUsers.js";
 import loginArt from "../assets/safe_login_art.png";
 
 /**
@@ -64,6 +64,22 @@ export default function Login({ onSuccess }) {
     const isNew = !(await Checkuser(email));
 
     localStorage.setItem("sos_email", email);
+    
+    // Load profile for returning users so alert emails have their name
+    if (!isNew) {
+      try {
+        const profile = await getFullName(email);
+        if (profile?.name || profile?.surname) {
+          localStorage.setItem("user_profile", JSON.stringify({ 
+            firstName: profile.name || "", 
+            surname: profile.surname || "" 
+          }));
+        }
+      } catch (err) {
+        console.warn("Could not load user profile:", err.message);
+      }
+    }
+    
     onSuccess?.(email, { isNew, preset: splitDisplayName(user.displayName) });
   }
 

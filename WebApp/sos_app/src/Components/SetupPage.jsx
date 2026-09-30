@@ -42,6 +42,8 @@ export default function SetupPage({ email, preset, onComplete }) {
       } else {
         await addUser(email, first, last);
       }
+      // Save profile to localStorage so alert emails can include the name
+      localStorage.setItem("user_profile", JSON.stringify({ firstName: first, surname: last }));
       onComplete({ name: first, surname: last });
     } catch (err) {
       setError(err.message);
