@@ -1,13 +1,4 @@
-import React, { useEffect, useState } from "react";
-import {
-  voiceWakeAvailable,
-  voiceWakeStatus,
-  voiceWakeEnable,
-  voiceWakeDisable,
-  voiceWakeOpenAccessibilitySettings,
-  voiceWakeOpenBatterySettings,
-  voiceWakeOpenAppSettings,
-} from "../functions/voiceWake";
+import React from "react";
 import { readCaptureLog, clearCaptureLog } from "../functions/recDiagnostics";
 
 /**
@@ -51,39 +42,6 @@ const COLORS = [
 
 const ACTIVE = "#3b82f6";
 
-// Small inline kit for the voice card - the .guide-* classes in index.css
-// cover the rest, and these three bits are used nowhere else.
-const voiceRow = {
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "center",
-  gap: "12px",
-  margin: "14px 0 10px",
-  fontSize: "14px",
-  fontWeight: 600,
-};
-const voiceHint = {
-  fontSize: "12px",
-  fontWeight: 400,
-  color: "#666",
-};
-const voiceLinks = {
-  display: "flex",
-  gap: "10px",
-  marginTop: "10px",
-  flexWrap: "wrap",
-};
-const voiceLinkBtn = {
-  background: "none",
-  border: "1px solid #e5e5e5",
-  borderRadius: "999px",
-  padding: "8px 14px",
-  fontSize: "13px",
-  color: "#1a1a1a",
-  cursor: "pointer",
-  fontFamily: "inherit",
-};
-
 export default function GuidePage({ onComplete, variant = "onboarding" }) {
   // Reached two ways: as the last onboarding step (variant "onboarding") and
   // as a standalone screen from the menu (variant "settings"). The onboarding
@@ -93,60 +51,6 @@ export default function GuidePage({ onComplete, variant = "onboarding" }) {
   // no greeting, and its button sends the user back rather than declaring
   // readiness.
   const isSettings = variant === "settings";
-
-  // The built-in "help" wake word exists only inside the APK, so this card
-  // renders on the settings screen of a device and nowhere else - the
-  // website and the onboarding flow never see it.
-  const hasVoice = isSettings && voiceWakeAvailable();
-  const [voice, setVoice] = useState(null);
-  const [voiceError, setVoiceError] = useState("");
-  // On-device capture diagnostics (see recDiagnostics.js). Only ever shown on
-  // this native settings screen; the website never renders section 05.
-  const [diag, setDiag] = useState([]);
-  const refreshDiag = () => setDiag(readCaptureLog());
-  // Re-read the native wake state on demand (and automatically when the app
-  // becomes visible again). Needed because opening the system Accessibility
-  // screen only PAUSES this activity - the component stays mounted, so without
-  // an explicit refresh the "Phone permission" row would keep showing the stale
-  // "Off" even right after the user turns the switch on.
-  const refreshVoice = async () => {
-    try {
-      setVoice(await voiceWakeStatus());
-    } catch {
-      /* status read is best-effort */
-    }
-  };
-
-  useEffect(() => {
-    if (!hasVoice) return;
-    let alive = true;
-    const load = () => {
-      voiceWakeStatus().then((s) => {
-        if (alive) setVoice(s);
-      });
-      setDiag(readCaptureLog());
-    };
-    load();
-    // Returning from Settings/Accessibility fires visibilitychange on resume.
-    const onVisible = () => {
-      if (document.visibilityState === "visible") load();
-    };
-    document.addEventListener("visibilitychange", onVisible);
-    return () => {
-      alive = false;
-      document.removeEventListener("visibilitychange", onVisible);
-    };
-  }, [hasVoice]);
-
-  const handleVoiceToggle = async () => {
-    setVoiceError("");
-    try {
-      setVoice(voice?.enabled ? await voiceWakeDisable() : await voiceWakeEnable());
-    } catch (err) {
-      setVoiceError(err?.message || "Could not change the setting");
-      setVoice(await voiceWakeStatus());
-    }
-  };
 
   return (
     <div className="guide-page">
@@ -248,107 +152,6 @@ export default function GuidePage({ onComplete, variant = "onboarding" }) {
           &mdash; so add at least one person you would actually answer.
         </p>
       </section>
-
-      {hasVoice && (
-        <>
-          <div className="guide-divider" />
-
-          <section className="guide-section">
-            <div className="guide-section-header">
-              <span className="guide-number">05</span>
-              <h2 className="guide-section-title">Hands-free recording</h2>
-            </div>
-            <p className="guide-text">
-              Say &ldquo;help&rdquo; and this phone opens straight into video
-              recording &mdash; even with the screen off or the app closed.
-              Words are recognised on the phone itself; nothing is ever
-              uploaded.
-            </p>
-            <p className="guide-text">
-              Two switches must read On for it to work: the one below, and
-              &ldquo;Weather App&rdquo; under Phone&nbsp;Settings &rarr;
-              Accessibility (described there as hands-free weather). Keeping
-              the phone off battery optimisation stops it from falling asleep.
-            </p>
-
-            <div style={voiceRow}>
-              <span>
-                Listening for &ldquo;help&rdquo;:{" "}
-                {voice?.enabled ? (voice?.running ? " On" : " Starting\u2026") : " Off"}
-              </span>
-              <span style={voiceHint}>
-                {voice?.accessibility ? "Phone permission: On" : "Phone permission: Off"}
-              </span>
-            </div>
-
-            <button
-              type="button"
-              className="login-google flow-submit"
-              onClick={handleVoiceToggle}
-            >
-              {voice?.enabled ? "Turn hands-free off" : "Turn hands-free on"}
-            </button>
-
-            <div style={voiceLinks}>
-              <button type="button" style={voiceLinkBtn} onClick={voiceWakeOpenAccessibilitySettings}>
-                Accessibility settings
-              </button>
-              <button type="button" style={voiceLinkBtn} onClick={voiceWakeOpenBatterySettings}>
-                Battery settings
-              </button>
-              <button type="button" style={voiceLinkBtn} onClick={voiceWakeOpenAppSettings}>
-                App settings (restricted access)
-              </button>
-              <button type="button" style={voiceLinkBtn} onClick={refreshVoice}>
-                Refresh permission status
-              </button>
-            </div>
-
-            {voiceError && (
-              <p className="guide-text" style={{ color: "#dc2626" }}>
-                {voiceError}
-              </p>
-            )}
-
-            {/* Capture diagnostics: the real reason a recording did or didn't
-                start, since the app can't show an alert without breaking the
-                disguise. Reproduce a tap on the Weather page, then refresh. */}
-            <div style={voiceLinks}>
-              <button type="button" style={voiceLinkBtn} onClick={refreshDiag}>
-                Refresh recording log
-              </button>
-              <button
-                type="button"
-                style={voiceLinkBtn}
-                onClick={() => {
-                  clearCaptureLog();
-                  refreshDiag();
-                }}
-              >
-                Clear log
-              </button>
-            </div>
-            {diag.length > 0 && (
-              <pre
-                style={{
-                  whiteSpace: "pre-wrap",
-                  wordBreak: "break-word",
-                  fontSize: "11px",
-                  lineHeight: 1.5,
-                  background: "#f5f5f5",
-                  color: "#333",
-                  borderRadius: "8px",
-                  padding: "10px",
-                  margin: "8px 0 0",
-                  fontFamily: "monospace"
-                }}
-              >
-                {diag.join("\n")}
-              </pre>
-            )}
-          </section>
-        </>
-      )}
 
       <button
         type="button"

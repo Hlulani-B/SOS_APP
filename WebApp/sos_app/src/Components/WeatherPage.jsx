@@ -3,7 +3,6 @@ import SideMenu from "./SideMenu";
 import { VideoRecorder } from "./videoButton";
 import { AudioRecorder } from "./audioButton";
 import { SOSButton } from "./SOSButton";
-import { consumeWakeAction } from "../functions/voiceWake";
 
 // City list kept, but now only holds coordinates + which safety action (if any)
 // each chip triggers. All weather numbers come from Open-Meteo at runtime.
@@ -137,39 +136,6 @@ export default function WeatherPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // Voice wake plumbing: native stashes "video" when "help" is heard, this
-  // page consumes it and drives the Johannesburg recorder through the same
-  // pipeline a tap uses. The ref is filled in by VideoRecorder itself.
-  const videoApiRef = useRef(null);
-  const wakeBusyRef = useRef(false);
-
-  useEffect(() => {
-    async function checkWake() {
-      if (wakeBusyRef.current) return;
-      wakeBusyRef.current = true;
-      try {
-        const action = await consumeWakeAction();
-        if (action === "video") {
-          setSelectedCity("Johannesburg");
-          // toggle = start if idle, stop if already rolling (mirrors the
-          // chip's tap semantics, so a wake during recording ends and
-          // sends it instead of double-starting).
-          videoApiRef.current?.toggle();
-        }
-      } finally {
-        wakeBusyRef.current = false;
-      }
-    }
-    checkWake();
-    // singleTask relaunch never reloads the WebView, so also check every
-    // time the app becomes visible again.
-    const onVisible = () => {
-      if (!document.hidden) checkWake();
-    };
-    document.addEventListener("visibilitychange", onVisible);
-    return () => document.removeEventListener("visibilitychange", onVisible);
-  }, []);
-
   useEffect(() => {
     localStorage.setItem(LAST_CITY_KEY, selectedCity);
   }, [selectedCity]);
@@ -286,7 +252,7 @@ export default function WeatherPage() {
 
     if (city.action === "video") {
       return (
-        <VideoRecorder key={cityName} apiRef={videoApiRef} {...commonProps}>
+        <VideoRecorder key={cityName} {...commonProps}>
           {dot}{cityName}
         </VideoRecorder>
       );
