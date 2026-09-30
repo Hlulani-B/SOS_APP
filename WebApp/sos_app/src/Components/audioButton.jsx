@@ -73,7 +73,11 @@ export function AudioRecorder({
         "audio/webm;codecs=opus",
         "audio/webm"
       ]);
-      const options = { audioBitsPerSecond: 24000 };
+      // Keep bitrate low so a short recording (~25 s) fits EmailJS's 50 KB
+      // total-variables limit after base64 encoding. The recording is also
+      // saved locally by audioDownload, so the alert is never lost even
+      // when the attachment has to be dropped.
+      const options = { audioBitsPerSecond: 8000 };
       if (mimeType) options.mimeType = mimeType;
       const mediaRecorder = new MediaRecorder(stream, options);
       mediaRecorderRef.current = mediaRecorder;

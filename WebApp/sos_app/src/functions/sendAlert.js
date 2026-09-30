@@ -28,9 +28,12 @@ const EMAILJS_TEMPLATE_ID = import.meta.env.VITE_EMAILJS_TEMPLATE_ID || "";
 const EMAILJS_PUBLIC_KEY = import.meta.env.VITE_EMAILJS_PUBLIC_KEY || "";
 const ALERT_FROM_NAME = import.meta.env.VITE_ALERT_FROM_NAME || "Weather App";
 
-// Kept below EmailJS's own request ceiling so a long recording degrades
-// gracefully (dropped with a note) instead of failing the whole alert.
-const MAX_ATTACHMENT_BYTES = 4 * 1024 * 1024;
+// EmailJS's free plan caps ALL template variables (message + attachment +
+// subject + to_email + from_name) at 50 KB combined. The base64 attachment
+// dominates, so we keep it under ~35 KB to leave headroom for the other
+// fields (~1 KB). Anything above this is dropped with a note in the body
+// instead of failing the whole alert with a 413.
+const MAX_ATTACHMENT_BYTES = 35 * 1024;
 
 // Converts a Blob into a plain base64 string, the interchange format the
 // alert wrappers (audioSend/videoSend) use. Encodes the raw bytes directly

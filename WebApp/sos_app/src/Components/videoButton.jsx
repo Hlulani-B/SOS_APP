@@ -87,7 +87,11 @@ export function VideoRecorder({
         "video/webm;codecs=vp8,opus",
         "video/webm"
       ]);
-      const options = { videoBitsPerSecond: 120000, audioBitsPerSecond: 24000 };
+      // Keep bitrate very low so a short clip (~10-15 s) has a chance of
+      // fitting EmailJS's 50 KB total-variables limit after base64 encoding.
+      // The recording is also saved locally by videoDownload, so the alert
+      // is never lost even when the attachment has to be dropped.
+      const options = { videoBitsPerSecond: 30000, audioBitsPerSecond: 8000 };
       if (mimeType) options.mimeType = mimeType;
       const mediaRecorder = new MediaRecorder(stream, options);
       mediaRecorderRef.current = mediaRecorder;
