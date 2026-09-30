@@ -4,7 +4,9 @@
  * (no FCM, no web service worker), so the notification is produced entirely
  * client-side the instant the pals poll sees a pal turn online.
  *
- * On the APK: @capacitor/local-notifications fires a real native notification.
+ * On the APK: Capacitor.Plugins.LocalNotifications fires a real native
+ * notification (accessed through the Capacitor plugin bridge, not via
+ * ES module import - that would be externalized by vite for the web build).
  * On the website: the browser Notification API is used instead.
  * The call sites stay identical - nothing in Location.jsx needs to know which
  * surface it is running on.
@@ -18,20 +20,13 @@ import { Capacitor } from "@capacitor/core";
 
 const IS_NATIVE = Capacitor.isNativePlatform();
 
-// Lazy-load the native plugin only on the APK so the web build never tries
-// to resolve a package that is not installed on the server.
-let _nativeMod = null;
-async function nativeModule() {
+// Access the native notification plugin through the Capacitor bridge.
+// This works on the APK where the plugin is registered, and returns undefined
+// on the web where it isn't. No ES module import needed (which would be
+// externalized by vite and break at runtime).
+function nativeNotif() {
   if (!IS_NATIVE) return null;
-  if (!_nativeMod) {
-    try {
-      const mod = await import("@capacitor/local-notifications");
-      _nativeMod = mod.LocalNotifications;
-    } catch {
-      _nativeMod = null;
-    }
-  }
-  return _nativeMod;
+  return Capacitor.Plugins?.LocalNotifications || null;
 }
 
 // Ask for permission at most once per session; the system dialog should not
@@ -56,7 +51,7 @@ export async function ensureNotifyPermission() {
   permissionRequested = true;
   try {
     if (IS_NATIVE) {
-      const mod = await nativeModule();
+      const mod = nativeNotif();
       if (mod) await mod.requestPermissions();
     } else if (typeof Notification !== "undefined" && Notification.permission === "default") {
       await Notification.requestPermission();
@@ -75,9 +70,12 @@ export async function notifyShareStart(email, name) {
   const who = (name && String(name).trim()) || email || "Someone";
   try {
     if (IS_NATIVE) {
-      const mod = await nativeModule();
-      if (!mod) return;
-      await mod.schedule({
+      const mod = nativeNotif();
+      if (!mod) {
+        console.warn("LocalNotifications plugin not available");
+        return;
+      }
+      const result = await mod.schedule({
         notifications: [
           {
             id: notifId(email),
@@ -87,10 +85,12 @@ export async function notifyShareStart(email, name) {
           },
         ],
       });
+      console.log("Notification scheduled:", result);
     } else if (typeof Notification !== "undefined" && Notification.permission === "granted") {
       new Notification("Location shared", { body: `${who} shared their location` });
     }
-  } catch {
+  } catch (err) {
+    console.warn("Notification failed:", err.message || err);
     /* scheduling failed (no permission / unsupported) - presence still shows
        on the map, so the notification is a pure convenience layer */
   }
