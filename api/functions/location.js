@@ -100,8 +100,8 @@ export class Location {
         WHERE email = ANY($1::text[])
           AND latitude IS NOT NULL
           AND longitude IS NOT NULL
-          AND last_shared > now() - interval '${PRESENCE_TTL_SECONDS} seconds'`,
-      [emails]
+          AND last_shared > now() - ($2 || ' seconds')::interval`,
+      [emails, PRESENCE_TTL_SECONDS]
     );
 
     return rows;
