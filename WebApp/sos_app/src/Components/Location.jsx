@@ -10,6 +10,7 @@ import { AvatarImage, avatarSrc } from "./avatars.jsx";
 import { get_pals, get_invites, get_sent_invites, accept_invite, remove_pal } from "../functions/apiPals.js";
 import { getProfiles } from "../functions/apiUsers.js";
 import { getLocationsByEmails } from "../functions/apiLocation.js";
+import { ensureNotifyPermission, notifyShareStart } from "../functions/shareNotify.js";
 import { getLocationAndWeather } from "../functions/getLocationWeather.js";
 import { VIEWS, navigate } from "../navigation.js";
 
@@ -85,6 +86,31 @@ function samePals(a, b) {
   });
 }
 
+// Share-start notifications, "only once" per online session. Module scope (not
+// component state) so leaving and re-opening the Location screen does NOT
+// re-announce pals we already announced this app lifetime; an email drops out
+// of the set only when that pal goes offline, so a genuine new share is
+// announced again. A pal is "online" exactly when they have coordinates
+// (getLocationsByEmails already drops NULL and stale rows server-side).
+const announcedShares = new Set();
+
+function detectShareStarts(next) {
+  const onlineNow = new Set();
+  for (const p of next) {
+    if (p.lat != null && p.lon != null) onlineNow.add(p.email);
+  }
+  for (const p of next) {
+    if (onlineNow.has(p.email) && !announcedShares.has(p.email)) {
+      notifyShareStart(p.email, p.name);
+      announcedShares.add(p.email);
+    }
+  }
+  // Forget pals who went quiet so a later re-share counts as a fresh event.
+  for (const em of Array.from(announcedShares)) {
+    if (!onlineNow.has(em)) announcedShares.delete(em);
+  }
+}
+
 // Same reference-stability trick for the invite lists polled every
 // PALS_POLL_MS: rows keyed by id/status/participants, so a tick that changed
 // nothing keeps the old array and the bell badge + open panel stay still.
@@ -156,6 +182,12 @@ export default function Location({ email }) {
   // bump to re-run the pals load without changing email (after an accept)
   const [reloadTick, setReloadTick] = useState(0);
 
+  // Ask for notification permission once when this screen opens so the first
+  // detected share-start can surface a heads-up. Best-effort and never blocks.
+  useEffect(() => {
+    ensureNotifyPermission();
+  }, []);
+
   // Sharing devices tick every 10s (functions/liveLocation.js), so reading
   // the table on the same cadence turns a pal online/offline within one
   // broadcast instead of only on page load.
@@ -184,17 +216,19 @@ export default function Location({ email }) {
         const locationByEmail = new Map(locations.map((l) => [l.email, l]));
 
         if (!cancelled) {
-          setPals((prev) => {
-            const next = profiles.map((profile) => ({
-              email: profile.email,
-              name: profile.name,
-              surname: profile.surname,
-              avatar: profile.avatar,
-              lat: locationByEmail.get(profile.email) ? Number(locationByEmail.get(profile.email).latitude) : null,
-              lon: locationByEmail.get(profile.email) ? Number(locationByEmail.get(profile.email).longitude) : null
-            }));
-            return samePals(prev, next) ? prev : next;
-          });
+          const next = profiles.map((profile) => ({
+            email: profile.email,
+            name: profile.name,
+            surname: profile.surname,
+            avatar: profile.avatar,
+            lat: locationByEmail.get(profile.email) ? Number(locationByEmail.get(profile.email).latitude) : null,
+            lon: locationByEmail.get(profile.email) ? Number(locationByEmail.get(profile.email).longitude) : null
+          }));
+          setPals((prev) => (samePals(prev, next) ? prev : next));
+          // Edge-detect online transitions. Safe to call on every tick:
+          // detectShareStarts is gated by the announced set, so an unchanged
+          // list notifies no one.
+          detectShareStarts(next);
         }
       } catch (err) {
         if (!cancelled && !booted) setError(err.message || "Could not load pals");
