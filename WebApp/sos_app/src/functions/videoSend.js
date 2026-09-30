@@ -9,7 +9,7 @@
 import { sendAlertEmail, blobToBase64 } from './sendAlert';
 import { getMapsLink } from './location';
 
-export async function videoSend(blob, userEmail = "user@example.com") {
+export async function videoSend(blob) {
   try {
     // Get user profile. Every field is coerced to a string so that a stale
     // or malformed localStorage entry (e.g. customMessage stored as an
@@ -21,6 +21,7 @@ export async function videoSend(blob, userEmail = "user@example.com") {
     const userName = `${firstName} ${surname}`.trim() || "Someone";
     const rawCustom = toStr(userProfile.customMessage).trim();
     const customMessage = rawCustom && rawCustom !== "[object Object]" ? rawCustom : "I need help.";
+    const userEmail = localStorage.getItem("sos_email") || "";
 
     // Build the attachment. Any failure here is logged and the alert still
     // goes out without the file - the email must never be lost.
