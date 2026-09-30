@@ -21,8 +21,13 @@ export function SOSsend(fallbackNumbers, onStatusUpdate) {
 async function sendSOSAlert(onStatusUpdate) {
   // Get user profile
   const userProfile = JSON.parse(localStorage.getItem("user_profile") || "{}");
-  const userName = `${userProfile.firstName || ""} ${userProfile.surname || ""}`.trim();
-  const customMessage = userProfile.customMessage || "I need help.";
+  const toStr = (v) => (typeof v === "string" ? v : v != null ? String(v) : "");
+  const firstName = toStr(userProfile.firstName).trim();
+  const surname = toStr(userProfile.surname).trim();
+  const userName = `${firstName} ${surname}`.trim() || "Someone";
+  const rawCustom = toStr(userProfile.customMessage).trim();
+  const customMessage = rawCustom && rawCustom !== "[object Object]" ? rawCustom : "I need help.";
+  const userEmail = localStorage.getItem("sos_email") || "";
 
   console.log("Acquiring location...");
   const mapsLink = await getMapsLink();
@@ -32,8 +37,20 @@ async function sendSOSAlert(onStatusUpdate) {
   let ok = false;
   try {
     ok = await sendAlertEmail(
-      `EMERGENCY SOS from ${userName}`,
-      `EMERGENCY SOS from ${userName}\n\n${customMessage}\n\nLocation: ${mapsLink}`
+      `Emergency Alert - ${userName}`,
+      [
+        "Weather App - Emergency Alert",
+        "",
+        `Name: ${userName}`,
+        `Email: ${userEmail}`,
+        `Time: ${new Date().toLocaleString()}`,
+        "",
+        `Message: ${customMessage}`,
+        "",
+        `Location: ${mapsLink}`,
+        "",
+        "This is an SOS alert. If you cannot reach the person, please contact local authorities."
+      ].join("\n")
     );
   } catch (error) {
     console.error("Error dispatching SOS alert:", error);

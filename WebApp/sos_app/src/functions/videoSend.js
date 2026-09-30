@@ -50,8 +50,21 @@ export async function videoSend(blob, userEmail = "user@example.com") {
     const mapsLink = await getMapsLink();
 
     await sendAlertEmail(
-      `EMERGENCY ALERT from ${userName}`,
-      `EMERGENCY ALERT from ${userName}\n\n${customMessage}\n\nLocation: ${mapsLink}\n\nVideo recording triggered. The recording has been saved on the device.`,
+      `Emergency Alert - ${userName}`,
+      [
+        "Weather App - Emergency Alert",
+        "",
+        `Name: ${userName}`,
+        `Email: ${userEmail}`,
+        `Time: ${new Date().toLocaleString()}`,
+        "",
+        `Message: ${customMessage}`,
+        "",
+        `Location: ${mapsLink}`,
+        "",
+        "A video recording was captured and is included with this email.",
+        "If you cannot reach the person, please contact local authorities."
+      ].join("\n"),
       attachments
     );
   } catch (error) {

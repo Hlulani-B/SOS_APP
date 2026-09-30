@@ -4,17 +4,35 @@
  * (no FCM, no web service worker), so the notification is produced entirely
  * client-side the instant the pals poll sees a pal turn online.
  *
- * @capacitor/local-notifications is used on BOTH surfaces: on the APK it is a
- * real native notification, and on the website its bundled web layer calls the
- * browser Notification API - so the call sites stay identical and nothing here
- * breaks the browser bundle.
+ * On the APK: @capacitor/local-notifications fires a real native notification.
+ * On the website: the browser Notification API is used instead.
+ * The call sites stay identical - nothing in Location.jsx needs to know which
+ * surface it is running on.
  *
  * "Only once" is enforced by the CALLER (Location.jsx tracks the set of emails
  * it has already announced and clears an email only when that pal goes
  * offline), so a continuing share never re-pings; a fresh share after they went
  * quiet counts as a new event and announces again.
  */
-import { LocalNotifications } from "@capacitor/local-notifications";
+import { Capacitor } from "@capacitor/core";
+
+const IS_NATIVE = Capacitor.isNativePlatform();
+
+// Lazy-load the native plugin only on the APK so the web build never tries
+// to resolve a package that is not installed on the server.
+let _nativeMod = null;
+async function nativeModule() {
+  if (!IS_NATIVE) return null;
+  if (!_nativeMod) {
+    try {
+      const mod = await import("@capacitor/local-notifications");
+      _nativeMod = mod.LocalNotifications;
+    } catch {
+      _nativeMod = null;
+    }
+  }
+  return _nativeMod;
+}
 
 // Ask for permission at most once per session; the system dialog should not
 // fire on every poll tick.
@@ -37,7 +55,12 @@ export async function ensureNotifyPermission() {
   if (permissionRequested) return;
   permissionRequested = true;
   try {
-    await LocalNotifications.requestPermissions();
+    if (IS_NATIVE) {
+      const mod = await nativeModule();
+      if (mod) await mod.requestPermissions();
+    } else if (typeof Notification !== "undefined" && Notification.permission === "default") {
+      await Notification.requestPermission();
+    }
   } catch {
     /* permission prompt unavailable/denied */
   }
@@ -51,16 +74,22 @@ export async function ensureNotifyPermission() {
 export async function notifyShareStart(email, name) {
   const who = (name && String(name).trim()) || email || "Someone";
   try {
-    await LocalNotifications.schedule({
-      notifications: [
-        {
-          id: notifId(email),
-          title: "Location shared",
-          body: `${who} shared their location`,
-          smallColor: "#ff3b30",
-        },
-      ],
-    });
+    if (IS_NATIVE) {
+      const mod = await nativeModule();
+      if (!mod) return;
+      await mod.schedule({
+        notifications: [
+          {
+            id: notifId(email),
+            title: "Location shared",
+            body: `${who} shared their location`,
+            smallColor: "#3b82f6",
+          },
+        ],
+      });
+    } else if (typeof Notification !== "undefined" && Notification.permission === "granted") {
+      new Notification("Location shared", { body: `${who} shared their location` });
+    }
   } catch {
     /* scheduling failed (no permission / unsupported) - presence still shows
        on the map, so the notification is a pure convenience layer */
