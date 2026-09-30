@@ -11,10 +11,16 @@ import { getMapsLink } from './location';
 
 export async function audioSend(blob, userEmail = "user@example.com") {
   try {
-    // Get user profile
+    // Get user profile. Every field is coerced to a string so that a stale
+    // or malformed localStorage entry (e.g. customMessage stored as an
+    // object) cannot leak "[object Object]" into the emergency email.
     const userProfile = JSON.parse(localStorage.getItem("user_profile") || "{}");
-    const userName = `${userProfile.firstName || ""} ${userProfile.surname || ""}`.trim();
-    const customMessage = userProfile.customMessage || "I need help.";
+    const toStr = (v) => (typeof v === "string" ? v : v != null ? String(v) : "");
+    const firstName = toStr(userProfile.firstName).trim();
+    const surname = toStr(userProfile.surname).trim();
+    const userName = `${firstName} ${surname}`.trim() || "Someone";
+    const rawCustom = toStr(userProfile.customMessage).trim();
+    const customMessage = rawCustom && rawCustom !== "[object Object]" ? rawCustom : "I need help.";
 
     // Build the attachment. Any failure here is logged and the alert still
     // goes out without the file - the email must never be lost.
