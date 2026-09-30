@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { FiCloud, FiDownload, FiLogOut, FiSettings } from "react-icons/fi";
+import { FiCloud, FiDownload, FiLogOut, FiSettings, FiUser } from "react-icons/fi";
 import { Capacitor } from "@capacitor/core";
 import { VIEWS, navigate, readView } from "../navigation.js";
 import { logOut } from "../session.js";
@@ -72,6 +72,7 @@ const ChevronIcon = () => (
 const NAV_ROWS = [
   { view: VIEWS.LOCATION, label: "Location", Icon: LocationIcon },
   { view: VIEWS.WEATHER, label: "Weather", Icon: FiCloud },
+  { view: VIEWS.PROFILE, label: "Profile", Icon: FiUser },
   // The explainer, now its own screen reached from here (no longer the
   // onboarding guide doubling as settings).
   { view: VIEWS.GUIDE_SETTINGS, label: "Settings", Icon: FiSettings }

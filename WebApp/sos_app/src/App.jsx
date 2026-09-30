@@ -4,6 +4,7 @@ import Login from './Components/login.jsx'
 import SetupPage from './Components/SetupPage.jsx'
 import AvatarPage from './Components/AvatarPage.jsx'
 import GuidePage from './Components/GuidePage.jsx'
+import ProfilePage from './Components/ProfilePage.jsx'
 import AddPalsPage from './Components/AddPalsPage.jsx'
 import WeatherPage from './Components/WeatherPage.jsx'
 import LocationPage from './Components/Location.jsx'
@@ -94,6 +95,10 @@ function App() {
     // Same explainer reached from the menu, standalone variant: no step
     // breadcrumb, and its button heads back to Weather (the app home).
     return <GuidePage variant="settings" onComplete={() => go(VIEWS.WEATHER)} />
+  }
+
+  if (view === VIEWS.PROFILE) {
+    return <ProfilePage />
   }
 
   if (view === VIEWS.LOCATION) {
