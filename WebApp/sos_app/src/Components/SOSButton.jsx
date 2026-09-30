@@ -85,7 +85,7 @@ export function SOSButton({
         ...style
       }}
     >
-      {/* Label never changes - only the color turns red once the alert
+      {/* Label never changes - only the color turns blue once the alert
           has gone out, so the disguise holds even while being watched */}
       {children || text}
     </button>

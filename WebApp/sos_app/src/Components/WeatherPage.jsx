@@ -280,7 +280,7 @@ export default function WeatherPage() {
       onPress: () => setSelectedCity(cityName),
       idleColor: isSelected ? color : "#fff",
       idleTextColor: isSelected ? "#fff" : "#1a1a1a",
-      activeColor: "#ff3b30",
+      activeColor: "#3b82f6",
       activeTextColor: "#fff"
     };
 

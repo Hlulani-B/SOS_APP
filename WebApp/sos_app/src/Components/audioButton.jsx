@@ -13,7 +13,7 @@ export function AudioRecorder({
   text = 'Record Audio',
   idleColor = '#E3D852',
   idleTextColor = '#333333',
-  activeColor = '#dc3545',
+  activeColor = '#3b82f6',
   activeTextColor = '#ffffff',
   style = {},
   onPress,
@@ -159,7 +159,7 @@ export function AudioRecorder({
         ...style
       }}
     >
-      {/* Label never changes - only the color turns red while recording,
+      {/* Label never changes - only the color turns blue while recording,
           so the disguise holds even when someone is watching the screen */}
       {children || text}
     </button>

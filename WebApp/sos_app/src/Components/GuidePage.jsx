@@ -48,7 +48,7 @@ const COLORS = [
   },
 ];
 
-const RED = "#ff3b30";
+const ACTIVE = "#3b82f6";
 
 // Small inline kit for the voice card - the .guide-* classes in index.css
 // cover the rest, and these three bits are used nowhere else.
@@ -206,7 +206,7 @@ export default function GuidePage({ onComplete, variant = "onboarding" }) {
           <h2 className="guide-section-title">When something is running</h2>
         </div>
         <p className="guide-text">
-          A recording is live while its city chip is red &mdash; and only then.
+          A recording is live while its city chip turns blue &mdash; and only then.
           The name never changes and the rest of the forecast stays completely
           normal.
         </p>
@@ -222,7 +222,7 @@ export default function GuidePage({ onComplete, variant = "onboarding" }) {
             <span className="guide-demo-arrow">&rarr;</span>
             <span
               className="guide-chip"
-              style={{ borderColor: RED, background: RED, color: "#fff" }}
+              style={{ borderColor: ACTIVE, background: ACTIVE, color: "#fff" }}
             >
               Durban
             </span>
