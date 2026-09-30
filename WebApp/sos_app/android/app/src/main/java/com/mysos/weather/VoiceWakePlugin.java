@@ -148,6 +148,22 @@ public class VoiceWakePlugin extends Plugin {
         }
     }
 
+    /** Opens the app details page where the user can enable restricted
+     *  settings on Android 13+ (sideloaded apps need this for accessibility). */
+    @PluginMethod
+    public void openAppSettings(PluginCall call) {
+        String pkg = getContext().getPackageName();
+        try {
+            Intent i = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                    Uri.parse("package:" + pkg))
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            getContext().startActivity(i);
+            call.resolve();
+        } catch (Exception e) {
+            call.reject("Could not open app settings");
+        }
+    }
+
     private boolean accessibilityEnabled() {
         String enabled = Settings.Secure.getString(
                 getContext().getContentResolver(),

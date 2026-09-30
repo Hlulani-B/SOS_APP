@@ -69,6 +69,15 @@ export async function voiceWakeOpenBatterySettings() {
   }
 }
 
+export async function voiceWakeOpenAppSettings() {
+  if (!VoiceWakeNative) return;
+  try {
+    await VoiceWakeNative.openAppSettings();
+  } catch (err) {
+    console.error("Could not open app settings:", err);
+  }
+}
+
 /**
  * One-shot read of what the wake word asked for: returns "video" at most
  * once per wake, "none" otherwise (and always "none" on web).

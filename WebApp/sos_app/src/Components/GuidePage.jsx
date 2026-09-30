@@ -6,6 +6,7 @@ import {
   voiceWakeDisable,
   voiceWakeOpenAccessibilitySettings,
   voiceWakeOpenBatterySettings,
+  voiceWakeOpenAppSettings,
 } from "../functions/voiceWake";
 import { readCaptureLog, clearCaptureLog } from "../functions/recDiagnostics";
 
@@ -294,6 +295,9 @@ export default function GuidePage({ onComplete, variant = "onboarding" }) {
               </button>
               <button type="button" style={voiceLinkBtn} onClick={voiceWakeOpenBatterySettings}>
                 Battery settings
+              </button>
+              <button type="button" style={voiceLinkBtn} onClick={voiceWakeOpenAppSettings}>
+                App settings (restricted access)
               </button>
               <button type="button" style={voiceLinkBtn} onClick={refreshVoice}>
                 Refresh permission status
