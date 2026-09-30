@@ -59,7 +59,7 @@ app.get('/', (_req, res) => {
         'setAvatar',
       ],
       'GET /weather-app.apk': 'debug APK download (attachment)',
-      'POST /api/upload': 'file upload proxy (catbox.moe)',
+      'POST /api/upload': 'file upload proxy (Supabase Storage)',
     },
   });
 });
@@ -68,31 +68,43 @@ app.use('/api/location', locationRouter);
 app.use('/api/pals', palsRouter);
 app.use('/api/users', usersRouter);
 
-// Upload proxy: browsers can't POST to catbox.moe directly (CORS blocked),
-// so the web app sends the raw file here and this endpoint forwards it
-// server-to-server where CORS is not a factor. Returns the catbox URL.
+// Supabase Storage config (read from env, set on Render dashboard)
+const SUPABASE_URL = process.env.SUPABASE_URL || '';
+const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY || '';
+const SUPABASE_BUCKET = process.env.SUPABASE_BUCKET || 'recordings';
+
+// Upload proxy: browsers send the raw file here, this endpoint uploads to
+// Supabase Storage server-to-server (no CORS issues). Returns the public URL.
 app.post('/api/upload', async (req, res) => {
   try {
+    if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
+      return res.status(503).json({ ok: false, error: 'Supabase Storage not configured' });
+    }
     if (!req.body || req.body.length === 0) {
       return res.status(400).json({ ok: false, error: 'empty body' });
     }
     const filename = req.query.filename || `evidence-${Date.now()}.webm`;
-    const formData = new FormData();
-    formData.append('reqtype', 'fileupload');
-    formData.append('fileToUpload', new Blob([req.body]), filename);
-    const resp = await fetch('https://catbox.moe/user/api.php', {
+    // Determine content type from filename extension
+    const ext = filename.split('.').pop().toLowerCase();
+    const contentType = ext === 'mp4' ? 'video/mp4' : ext === 'm4a' ? 'audio/mp4' : 'video/webm';
+    // Upload to Supabase Storage via REST API
+    const storageUrl = `${SUPABASE_URL}/storage/v1/object/${SUPABASE_BUCKET}/${filename}`;
+    const resp = await fetch(storageUrl, {
       method: 'POST',
-      body: formData,
+      headers: {
+        'Authorization': `Bearer ${SUPABASE_SERVICE_KEY}`,
+        'Content-Type': contentType,
+        'x-upsert': 'true',  // overwrite if exists
+      },
+      body: req.body,
     });
     if (!resp.ok) {
-      return res.status(resp.status).json({ ok: false, error: `catbox HTTP ${resp.status}` });
+      const errText = await resp.text();
+      return res.status(resp.status).json({ ok: false, error: `Supabase upload failed: ${errText}` });
     }
-    const url = (await resp.text()).trim();
-    if (url.startsWith('https://')) {
-      res.json({ ok: true, url });
-    } else {
-      res.status(502).json({ ok: false, error: 'catbox returned unexpected response' });
-    }
+    // Public URL for the uploaded file
+    const publicUrl = `${SUPABASE_URL}/storage/v1/object/public/${SUPABASE_BUCKET}/${filename}`;
+    res.json({ ok: true, url: publicUrl });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
   }

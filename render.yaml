@@ -23,6 +23,13 @@ services:
     envVars:
       - key: DATABASE_URL # pooled Neon connection string - set in dashboard
         sync: false
+      # Supabase Storage for recording uploads - set in dashboard
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      - key: SUPABASE_BUCKET
+        value: recordings
       # NOTE: CORS_ORIGINS is no longer read - index.js applies wildcard
       # cors() for every origin, so no dashboard value can block the site.
       - key: NODE_VERSION
