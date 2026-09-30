@@ -1,30 +1,23 @@
 /**
- * sendAlert - shared email dispatcher for all three alert paths (SOS, audio,
+ * sendAlert: shared email dispatcher for all three alert paths (SOS, audio,
  * video) over EmailJS.
- *
- * Why EmailJS and not Resend: on Resend's free tier (no verified domain)
- * delivery is restricted to the single account-holder address, so alerts
- * could never actually reach other pals. EmailJS sends through a mailbox
- * the user connects once (Gmail/Outlook/anything) to ANY recipient from
- * the browser - its public key is designed to be client-side, so no server
- * proxy hop is needed (Render serves this app statically; the old Vercel
- * api/emails.js proxy never ran there anyway).
  *
  * Setup (one time, in the EmailJS dashboard):
  *   1. connect an email service (any mailbox you control)
  *   2. create an email template with:
  *        To         = {{to_email}}
  *        Subject    = {{subject}}
- *        message    = {{message}}   (plus an attachment variable {{attachment}}
- *                                    enabled under the template's Attachments)
+ *        message    = {{message}}
+ *      and under the template's Attachments tab add a Variable Attachment
+ *      with the parameter name "attachment".
  *   3. copy the three ids into .env as VITE_EMAILJS_SERVICE_ID,
- *      VITE_EMAILJS_TEMPLATE_ID, VITE_EMAILJS_PUBLIC_KEY (see .env.example),
- *      and set the same three on the Render service before deploying.
+ *      VITE_EMAILJS_TEMPLATE_ID, VITE_EMAILJS_PUBLIC_KEY, and set the same
+ *      three on the Render service before deploying.
  *
  * Attachments: audioSend/videoSend pass the recording as base64 through the
- * third argument; it is rebuilt into a File for the SDK. Anything above
- * MAX_ATTACHMENT_BYTES is dropped and explained in the email body instead,
- * because the alert itself must ALWAYS go out.
+ * third argument. Anything above MAX_ATTACHMENT_BYTES is dropped and
+ * explained in the email body instead, because the alert itself must ALWAYS
+ * go out.
  */
 
 import emailjs from '@emailjs/browser';
@@ -39,12 +32,11 @@ const ALERT_FROM_NAME = import.meta.env.VITE_ALERT_FROM_NAME || "Weather App";
 // gracefully (dropped with a note) instead of failing the whole alert.
 const MAX_ATTACHMENT_BYTES = 4 * 1024 * 1024;
 
-// Converts a Blob into a plain base64 string - the interchange format the
+// Converts a Blob into a plain base64 string, the interchange format the
 // alert wrappers (audioSend/videoSend) use. Encodes the raw bytes directly
-// instead of parsing a data: URL: data URLs embed the blob's mime type, and
-// a type like "video/webm;codecs=vp8,opus" contains a comma BEFORE the
-// base64 payload, which corrupted the extracted string and made every video
-// attachment an unopenable file.
+// instead of parsing a data: URL, because a mime type like
+// "video/webm;codecs=vp8,opus" contains a comma before the base64 payload
+// and corrupts the extracted string.
 export function blobToBase64(blob) {
   return blob.arrayBuffer().then((buffer) => {
     const bytes = new Uint8Array(buffer);
@@ -59,24 +51,28 @@ export function blobToBase64(blob) {
   });
 }
 
-// Rebuilds a File from the base64 content for the EmailJS SDK, which
-// expects an actual file object in the template variable, not a string.
-function base64ToFile(content, filename, mimeType) {
-  const binary = atob(content);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-  return new File([bytes], filename, { type: mimeType || "application/octet-stream" });
+// EmailJS sends its params as JSON, so a File object would become {} and the
+// attachment would silently vanish. It expects a base64 data URL string.
+function base64ToDataUrl(content, mimeType) {
+  return `data:${mimeType || "application/octet-stream"};base64,${content}`;
 }
 
-// Turns a raw EmailJS failure into a plain-English hint with the FIX
+// Turns a raw EmailJS failure into readable text with a hint on the fix.
 function explainEmailJSError(raw) {
-  const msg = String(
-    (raw && (raw.text || raw.message)) || raw || "unknown error"
-  );
+  const toText = (v) => (typeof v === "string" ? v : JSON.stringify(v));
+  const msg =
+    raw && (raw.text || raw.message)
+      ? `${raw.status ? raw.status + " " : ""}${toText(raw.text || raw.message)}`
+      : toText(raw) || "unknown error";
 
-  // Missing/mistyped public key
+  // Missing or mistyped public key
   if (/invalid public key|public key/i.test(msg)) {
     return `${msg} -> FIX: copy the key from EmailJS -> Accounts -> API Keys into .env as VITE_EMAILJS_PUBLIC_KEY and rebuild.`;
+  }
+
+  // Attachment or request too large
+  if (/413|too large|payload|size/i.test(msg)) {
+    return `${msg} -> FIX: the attachment is over your EmailJS plan's size limit.`;
   }
 
   // Template variables not set up
@@ -84,14 +80,14 @@ function explainEmailJSError(raw) {
     return `${msg} -> FIX: the EmailJS template must define To={{to_email}}, Subject={{subject}}, the body must contain {{message}}, and the attachment slot must use {{attachment}}.`;
   }
 
-  // Monthly quota exhausted (free tier is 200 emails/month)
+  // Monthly quota exhausted (free tier is 200 emails per month)
   if (/quota|limit exceeded|too many/i.test(msg)) {
     return `${msg} -> FIX: the EmailJS free tier allows 200 emails per month; check the dashboard usage ring.`;
   }
 
   // Service mailbox disconnected
   if (/service|mailbox|authentication/i.test(msg) && !/parameters/i.test(msg)) {
-    return `${msg} -> FIX: reconnect the email service in the EmailJS dashboard (the connected mailbox password/OAuth went stale).`;
+    return `${msg} -> FIX: reconnect the email service in the EmailJS dashboard (the connected mailbox password or OAuth went stale).`;
   }
 
   return msg;
@@ -99,12 +95,11 @@ function explainEmailJSError(raw) {
 
 export async function sendAlertEmail(subject, text, attachments = []) {
   // Recipients are the signed-in user's trusted pals, read live from the
-  // backend (users.pals_email) instead of a cached localStorage contact list,
-  // so an invite accepted on another device is reflected the very next time
-  // an alert fires. The email comes from the session key written at sign-in.
+  // backend so an invite accepted on another device is reflected the next
+  // time an alert fires.
   const email = localStorage.getItem("sos_email");
   if (!email) {
-    console.warn("sendAlertEmail: no signed-in email - cannot resolve recipients.");
+    console.warn("sendAlertEmail: no signed-in email, cannot resolve recipients.");
     return false;
   }
 
@@ -154,7 +149,7 @@ export async function sendAlertEmail(subject, text, attachments = []) {
       finalText += "\n\nThe recording is attached to this email.";
     } else {
       console.warn(
-        `Attachment too large to email (${(totalBytes / 1024 / 1024).toFixed(1)}MB base64) - sending the alert without it.`
+        `Attachment too large to email (${(totalBytes / 1024 / 1024).toFixed(1)}MB base64), sending the alert without it.`
       );
       finalText +=
         "\n\nThe recording was too large to attach to this email; it has been saved on the device.";
@@ -163,23 +158,39 @@ export async function sendAlertEmail(subject, text, attachments = []) {
 
   let sent = 0;
   for (const to of recipients) {
+    const params = {
+      to_email: to,
+      subject,
+      message: finalText,
+      from_name: ALERT_FROM_NAME
+    };
+    if (safeAttachments.length > 0) {
+      const first = safeAttachments[0];
+      params.attachment = base64ToDataUrl(first.content, first.content_type);
+    }
+
     try {
-      const params = {
-        to_email: to,
-        subject,
-        message: finalText,
-        from_name: ALERT_FROM_NAME
-      };
-      if (safeAttachments.length > 0) {
-        const first = safeAttachments[0];
-        params.attachment = base64ToFile(first.content, first.filename, first.content_type);
-      }
       await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, params, {
         publicKey: EMAILJS_PUBLIC_KEY
       });
       sent++;
     } catch (error) {
       console.error(`Failed to send to ${to}:`, explainEmailJSError(error));
+
+      // If the attachment was the problem, retry once without it so the
+      // alert text and location still reach the contact.
+      if (params.attachment) {
+        try {
+          delete params.attachment;
+          params.message += "\n\n(The recording could not be attached; it is saved on the device.)";
+          await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, params, {
+            publicKey: EMAILJS_PUBLIC_KEY
+          });
+          sent++;
+        } catch (retryError) {
+          console.error(`Retry without attachment also failed for ${to}:`, explainEmailJSError(retryError));
+        }
+      }
     }
   }
 
